@@ -234,7 +234,12 @@ fn scan_probes_via_bridge() -> AppResult<Vec<Probe>> {
             .filter(|s| !s.is_empty());
 
         let t0 = std::time::Instant::now();
-        let (firmware, fw_src) = match bridge::probe_firmware(index) {
+
+        let try_read_fw = || -> Result<String, crate::infra::jlink_backend::errors::BridgeError> {
+            bridge::probe_firmware(index)
+        };
+
+        let (firmware, fw_src): (Option<String>, &'static str) = match try_read_fw() {
             Ok(s) if !s.is_empty() => (Some(s), "bridge_openex"),
             Ok(_) => (discovery_fw.clone(), "discovery_only"),
             Err(e) => {
@@ -244,7 +249,28 @@ fn scan_probes_via_bridge() -> AppResult<Vec<Probe>> {
                     serial,
                     e
                 );
-                (discovery_fw.clone(), "discovery_after_err")
+
+                // On cold start (or right after udev install), OpenEx may fail transiently.
+                // Retry once quickly to avoid "firmware missing until refresh".
+                let msg = e.to_string();
+                if msg.contains("Cannot connect") || msg.contains("Could not read J-Link capabilities") {
+                    std::thread::sleep(std::time::Duration::from_millis(250));
+                    match try_read_fw() {
+                        Ok(s) if !s.is_empty() => (Some(s), "bridge_openex_retry"),
+                        Ok(_) => (discovery_fw.clone(), "discovery_only_retry"),
+                        Err(e2) => {
+                            log::warn!(
+                                "[jlink] probe_firmware retry failed index={} sn={} — {}",
+                                index,
+                                serial,
+                                e2
+                            );
+                            (discovery_fw.clone(), "discovery_after_err")
+                        }
+                    }
+                } else {
+                    (discovery_fw.clone(), "discovery_after_err")
+                }
             }
         };
 

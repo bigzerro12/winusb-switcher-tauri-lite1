@@ -314,7 +314,7 @@ static bool command_not_supported(const std::string& s) {
          s.find("not supported") != std::string::npos;
 }
 
-static bool write_succeeded(const std::string& s) {
+[[maybe_unused]] static bool write_succeeded(const std::string& s) {
   if (s.find("Probe configured successfully") != std::string::npos) return true;
   std::string lower;
   lower.reserve(s.size());
@@ -691,7 +691,8 @@ char* jlink_bridge_switch_usb_driver(int index, int winusb) {
     set_err("invalid probe list or index");
     return dup_str("{\"success\":false,\"error\":\"invalid index\",\"detail\":\"\",\"rebootNotSupported\":false}");
   }
-  if (!select_probe(*a, index, list)) {
+  // With multiple USB probes, SelectByIndex can attach to the wrong unit; prefer USB serial.
+  if (!select_probe_usb_serial_first(*a, index, list)) {
     set_err("select probe failed");
     return dup_str("{\"success\":false,\"error\":\"select probe failed\",\"detail\":\"\",\"rebootNotSupported\":false}");
   }
@@ -757,7 +758,7 @@ char* jlink_bridge_switch_usb_driver(int index, int winusb) {
   a->JLINKARM_Close();
 
   // Reboot session
-  if (!select_probe(*a, index, list)) {
+  if (!select_probe_usb_serial_first(*a, index, list)) {
     return dup_str("{\"success\":true,\"error\":\"\",\"detail\":\"\",\"rebootNotSupported\":true}");
   }
 
