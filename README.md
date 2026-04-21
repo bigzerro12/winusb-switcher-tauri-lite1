@@ -8,14 +8,28 @@ Stack: **Rust** (`src-tauri`), **React + TypeScript** (`src/renderer`). See [`TH
 
 Ongoing work for this variant is tracked on Git branch **`winusb-switcher-tauri-lite1`**. CI runs on **`main`**, **`master`**, and **`winusb-switcher-tauri-lite1`**.
 
-To publish this tree to your remote (after [Git LFS](#git-lfs) is set up):
+Canonical personal remote for this line of work: **`https://github.com/ntgiahuy25d/winusb-switcher-tauri-lite1.git`** (branch **`winusb-switcher-tauri-lite1`**). If your GitHub user is different, substitute it in the URL.
 
-```bash
-git checkout winusb-switcher-tauri-lite1   # or: git switch -c winusb-switcher-tauri-lite1
-git remote add origin <your-remote-url>     # if not already added
-git push -u origin winusb-switcher-tauri-lite1
-git lfs push origin winusb-switcher-tauri-lite1 --all
-```
+**Create the empty GitHub repo once** (no README, no `.gitignore`, no license — you already have those locally):
+
+1. **GitHub CLI** (after `gh auth login`):
+
+   ```bash
+   cd /path/to/winusb-switcher-tauri-lite1
+   git remote remove origin 2>/dev/null || true
+   gh repo create winusb-switcher-tauri-lite1 --public --source=. --remote=origin --push
+   git lfs push origin winusb-switcher-tauri-lite1 --all
+   ```
+
+2. **Or in the browser:** [github.com/new](https://github.com/new) → Repository name **`winusb-switcher-tauri-lite1`** → **Create repository**, then:
+
+   ```bash
+   git remote set-url origin https://github.com/ntgiahuy25d/winusb-switcher-tauri-lite1.git
+   git push -u origin winusb-switcher-tauri-lite1
+   git lfs push origin winusb-switcher-tauri-lite1 --all
+   ```
+
+If `origin` was wrong (e.g. another user’s repo), fix it with `git remote set-url origin <your-clone-url>` before pushing.
 
 ## Bundled J-Link runtime
 

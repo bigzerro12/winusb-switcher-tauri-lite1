@@ -25,4 +25,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Legacy J-Link download/install UI and unused Tauri command constants for that flow.
 
-[1.1.0]: https://github.com/bigzerro12/winusb-switcher-tauri-lite/releases/tag/v1.1.0
+[1.1.0]: https://github.com/ntgiahuy25d/winusb-switcher-tauri-lite1/releases/tag/v1.1.0
