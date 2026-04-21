@@ -323,6 +323,11 @@ fn update_firmware_via_bridge(probe_index: usize) -> FirmwareUpdateResult {
     match bridge::update_firmware_json(probe_index) {
         Ok(s) => match serde_json::from_str::<serde_json::Value>(&s) {
             Ok(v) => {
+                let reboot_attempted = v["rebootAttempted"].as_bool().unwrap_or(false);
+                let reboot_not_supported = v["rebootNotSupported"].as_bool().unwrap_or(false);
+                let reboot_command = v["rebootCommand"].as_str().unwrap_or("");
+                let sleep_ms = v["sleepMs"].as_u64().unwrap_or(0);
+
                 if let Some(detail) = v["detail"].as_str() {
                     if !detail.trim().is_empty() {
                         // Can be multi-line and noisy; keep at debug by default.
@@ -344,7 +349,17 @@ fn update_firmware_via_bridge(probe_index: usize) -> FirmwareUpdateResult {
                         );
                         FirmwareUpdateResult::Failed { error: msg }
                     }
-                    "updated" => FirmwareUpdateResult::Updated { firmware: fw },
+                    "updated" => {
+                        log::info!(
+                            "[jlink] Probe[{}] firmware updated; post-update sleep={}ms reboot_attempted={} reboot_cmd={} reboot_not_supported={}",
+                            probe_index,
+                            sleep_ms,
+                            reboot_attempted,
+                            if reboot_command.is_empty() { "(none)" } else { reboot_command },
+                            reboot_not_supported
+                        );
+                        FirmwareUpdateResult::Updated { firmware: fw }
+                    }
                     _ => FirmwareUpdateResult::Current {
                         firmware: if fw.is_empty() { "n/a".to_string() } else { fw },
                     },
@@ -375,6 +390,11 @@ fn switch_usb_via_bridge(probe_index: usize, mode: UsbDriverMode) -> UsbDriverRe
         Ok(s) => match serde_json::from_str::<serde_json::Value>(&s) {
             Ok(v) => {
                 let success = v["success"].as_bool().unwrap_or(false);
+                let reboot_attempted = v["rebootAttempted"].as_bool().unwrap_or(false);
+                let reboot_not_supported = v["rebootNotSupported"].as_bool().unwrap_or(false);
+                let reboot_command = v["rebootCommand"].as_str().unwrap_or("");
+                let sleep_ms = v["sleepMs"].as_u64().unwrap_or(0);
+
                 if !success {
                     let detail = v["detail"].as_str().unwrap_or("");
                     if !detail.trim().is_empty() {
@@ -385,6 +405,15 @@ fn switch_usb_via_bridge(probe_index: usize, mode: UsbDriverMode) -> UsbDriverRe
                             bridge::last_error()
                         );
                     }
+                } else {
+                    log::info!(
+                        "[jlink] switch_usb_driver probe[{}] ok; post-switch sleep={}ms reboot_attempted={} reboot_cmd={} reboot_not_supported={}",
+                        probe_index,
+                        sleep_ms,
+                        reboot_attempted,
+                        if reboot_command.is_empty() { "(none)" } else { reboot_command },
+                        reboot_not_supported
+                    );
                 }
                 UsbDriverResult {
                     success,
@@ -396,7 +425,7 @@ fn switch_usb_via_bridge(probe_index: usize, mode: UsbDriverMode) -> UsbDriverRe
                         .as_str()
                         .filter(|e| !e.is_empty())
                         .map(|e| e.to_string()),
-                    reboot_not_supported: v["rebootNotSupported"].as_bool().unwrap_or(false),
+                    reboot_not_supported,
                 }
             }
             Err(e) => {

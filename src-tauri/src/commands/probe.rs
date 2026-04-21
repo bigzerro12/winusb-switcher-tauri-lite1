@@ -29,7 +29,18 @@ pub async fn detect_and_scan(
 
             let mut probes = JLinkService::scan_probes(rt_ref)?;
 
-            if run_firmware_bootstrap && !probes.is_empty() {
+            // Important: UpdateFirmwareIfNewer can take seconds even when "current".
+            // To keep app startup snappy, only run the startup firmware ensure when firmware info
+            // is missing (common right after udev changes / first attach) and only once per session.
+            let has_missing_fw = probes.iter().any(|p| {
+                p.firmware
+                    .as_deref()
+                    .unwrap_or("")
+                    .trim()
+                    .is_empty()
+            });
+
+            if run_firmware_bootstrap && has_missing_fw {
                 update_attempted = true;
                 for i in 0..probes.len() {
                     match JLinkService::update_firmware_only(rt_ref, i) {

@@ -655,15 +655,20 @@ char* jlink_bridge_update_firmware(int index) {
   // If firmware was updated, mimic J-Link Commander flow: Sleep(100) -> Reboot -> Sleep(100).
   // Some probes already reboot internally during update, but scheduling an explicit reboot helps
   // make the mode-switch and post-update state deterministic for users.
+  bool reboot_attempted = false;
   bool reboot_unsupported = false;
+  std::string reboot_command;
   if (updated) {
+    reboot_attempted = true;
     sleep_ms(100);
     if (select_probe_usb_serial_first(*a, index, list)) {
       const char* open_err2 = a->JLINKARM_OpenEx(&log_cb, &err_cb);
       if (open_err2 == nullptr) {
         std::string reboot_out = exec_out(*a, "ScheduleReboot");
+        reboot_command = "ScheduleReboot";
         if (contains_unknown_command(reboot_out)) {
           reboot_out = exec_out(*a, "reboot");
+          reboot_command = "reboot";
         }
         reboot_unsupported = reboot_out.find("Command not supported by connected probe.") != std::string::npos;
         a->JLINKARM_Close();
@@ -677,6 +682,10 @@ char* jlink_bridge_update_firmware(int index) {
   // Newlines will be flattened to ` | ` by json_escape_detail_for_json().
   const std::string detail =
       env_diag.str() +
+      std::string("post_update_sleep_ms=") + (updated ? "100" : "0") +
+      "\npost_update_reboot_attempted=" + std::string(reboot_attempted ? "yes" : "no") +
+      (reboot_attempted ? ("\npost_update_reboot_command=" + reboot_command) : std::string("\npost_update_reboot_command=")) +
+      "\npost_update_reboot_not_supported=" + std::string(reboot_unsupported ? "yes" : "no") +
       std::string("index=") + std::to_string(index) +
       "\nexpected_sn=" + std::to_string(sel.SerialNumber) +
       "\nproduct=" + std::string(sel.acProduct) +
@@ -691,7 +700,11 @@ char* jlink_bridge_update_firmware(int index) {
       << json_escape(fw_after_s.c_str()) << "\",\"beforeFirmware\":\""
       << json_escape(fw_before_s.c_str()) << "\",\"serialNumber\":\""
       << sel.SerialNumber << "\",\"detail\":\"" << json_escape_detail_for_json(detail) << "\",\"rebootNotSupported\":"
-      << (reboot_unsupported ? "true" : "false") << ",\"error\":\"\"}";
+      << (reboot_unsupported ? "true" : "false")
+      << ",\"rebootAttempted\":" << (reboot_attempted ? "true" : "false")
+      << ",\"rebootCommand\":\"" << json_escape(reboot_command.c_str()) << "\""
+      << ",\"sleepMs\":100"
+      << ",\"error\":\"\"}";
   return dup_str(oss.str());
 }
 
@@ -780,17 +793,19 @@ char* jlink_bridge_switch_usb_driver(int index, int winusb) {
 
   // Reboot session
   if (!select_probe_usb_serial_first(*a, index, list)) {
-    return dup_str("{\"success\":true,\"error\":\"\",\"detail\":\"\",\"rebootNotSupported\":true}");
+    return dup_str("{\"success\":true,\"error\":\"\",\"detail\":\"\",\"rebootNotSupported\":true,\"rebootAttempted\":false,\"rebootCommand\":\"\",\"sleepMs\":100}");
   }
 
   open_err = a->JLINKARM_OpenEx(&log_cb, &err_cb);
   if (open_err != nullptr) {
-    return dup_str("{\"success\":true,\"error\":\"\",\"detail\":\"\",\"rebootNotSupported\":true}");
+    return dup_str("{\"success\":true,\"error\":\"\",\"detail\":\"\",\"rebootNotSupported\":true,\"rebootAttempted\":false,\"rebootCommand\":\"\",\"sleepMs\":100}");
   }
 
   // Prefer ScheduleReboot (works across more probe families), fall back to reboot.
+  std::string reboot_cmd = "ScheduleReboot";
   std::string reboot_out = exec_out(*a, "ScheduleReboot");
   if (contains_unknown_command(reboot_out)) {
+    reboot_cmd = "reboot";
     reboot_out = exec_out(*a, "reboot");
   }
   a->JLINKARM_Close();
@@ -798,7 +813,8 @@ char* jlink_bridge_switch_usb_driver(int index, int winusb) {
 
   bool reboot_unsupported = reboot_out.find("Command not supported by connected probe.") != std::string::npos;
   std::ostringstream oss;
-  oss << "{\"success\":true,\"error\":\"\",\"detail\":\"\",\"rebootNotSupported\":" << (reboot_unsupported ? "true" : "false") << "}";
+  oss << "{\"success\":true,\"error\":\"\",\"detail\":\"\",\"rebootNotSupported\":" << (reboot_unsupported ? "true" : "false")
+      << ",\"rebootAttempted\":true,\"rebootCommand\":\"" << json_escape(reboot_cmd.c_str()) << "\",\"sleepMs\":100}";
   return dup_str(oss.str());
 }
 
