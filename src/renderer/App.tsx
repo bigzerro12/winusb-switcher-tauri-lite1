@@ -29,7 +29,7 @@ async function resizeHeightToContent() {
 }
 
 export default function App() {
-  const { isInstalled, checkInstallation } = useProbeStore();
+  const { isInstalled, isLoading, isFirmwareRefreshing, checkInstallation } = useProbeStore();
   const [bootstrap, setBootstrap] = useState<"pending" | "ok" | "error">("pending");
   const [bootstrapError, setBootstrapError] = useState<string>("");
 
@@ -114,9 +114,41 @@ export default function App() {
   }
 
   if (isInstalled === null) {
+    const primary =
+      isLoading ? "Scanning connected probes…" : "Checking J-Link runtime…";
+    const secondary = isFirmwareRefreshing
+      ? "Reading probe firmware details. Some probes may take a few seconds to respond after first launch or after permissions changes."
+      : "This can take longer on first launch or if multiple probes are connected.";
     return (
-      <div className="flex items-center justify-center h-screen bg-white">
-        <div className="text-gray-400 text-sm">Checking J-Link installation...</div>
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-b from-slate-50 to-white p-8">
+        <div className="message-card w-full max-w-[460px] rounded-xl border border-slate-200/80 bg-white/90 px-8 py-10 shadow-[0_8px_30px_rgb(0,0,0,0.06)] backdrop-blur-sm">
+          <h1 className="text-center text-base font-semibold tracking-tight text-slate-800">
+            Preparing probe access
+          </h1>
+          <p className="mt-3 text-center text-[13px] leading-relaxed text-slate-600">
+            {primary}
+          </p>
+          <p className="mt-3 text-center text-xs leading-relaxed text-slate-500">
+            {secondary}
+          </p>
+          <p className="mt-5 text-center text-xs text-slate-500">
+            {isLinux()
+              ? "On Linux, device permissions (udev rules) may be installed on first run and you may be prompted for administrator authorization."
+              : "Please keep this window open while setup completes."}
+          </p>
+          <div className="mt-8 h-1 overflow-hidden rounded-full bg-slate-100" role="progressbar" aria-label="Probe setup in progress">
+            <div className="bootstrap-lite-progress h-full w-2/5 rounded-full bg-slate-500/85" />
+          </div>
+          <style>{`
+            .bootstrap-lite-progress {
+              animation: bootstrapLiteShimmer 1.35s ease-in-out infinite;
+            }
+            @keyframes bootstrapLiteShimmer {
+              0% { transform: translateX(-120%); }
+              100% { transform: translateX(320%); }
+            }
+          `}</style>
+        </div>
       </div>
     );
   }
