@@ -89,6 +89,8 @@ pub fn prepare(app: &AppHandle) -> AppResult<JLinkRuntime> {
     let runtime_dir = crate::bundled_jlink::resolve_bundled_linux_runtime_dir(app)?;
     crate::platform::ensure_jlink_runtime_env(&runtime_dir.to_string_lossy());
 
+    ensure_linux_udev_rules(app)?;
+
     let candidates = [
         runtime_dir.join("libjlinkarm.so"),
         runtime_dir.join("libjlinkarm.so.9"),
@@ -135,6 +137,101 @@ pub fn prepare(app: &AppHandle) -> AppResult<JLinkRuntime> {
         native_lib_path: lib_path,
         version,
     })
+}
+
+#[cfg(target_os = "linux")]
+fn ensure_linux_udev_rules(app: &AppHandle) -> AppResult<()> {
+    use std::fs;
+    use std::io::Write;
+    use std::process::Command;
+
+    const RULES_DST: &str = "/etc/udev/rules.d/99-jlink.rules";
+    const RULES_BUNDLED: &str = "resources/segger-99-jlink.rules";
+
+    // Best-effort: if rules already exist, don't prompt the user.
+    if std::path::Path::new(RULES_DST).is_file() {
+        return Ok(());
+    }
+
+    let res_dir = app
+        .path()
+        .resource_dir()
+        .map_err(|e| AppError::Internal(format!("resource_dir: {}", e)))?;
+    let bundled_rules = res_dir.join(RULES_BUNDLED);
+    if !bundled_rules.is_file() {
+        log::warn!(
+            "[bootstrap] udev rules missing: {} (not bundled at {})",
+            RULES_DST,
+            bundled_rules.display()
+        );
+        return Ok(());
+    }
+
+    // Write to a temp file so pkexec can read it.
+    let mut tmp = std::env::temp_dir();
+    tmp.push(format!(
+        "winusb-switcher-lite-99-jlink-{}.rules",
+        std::process::id()
+    ));
+    let bytes = fs::read(&bundled_rules)?;
+    {
+        let mut f = fs::File::create(&tmp)?;
+        f.write_all(&bytes)?;
+    }
+
+    // If we can install directly (e.g. running as root), do so; otherwise attempt pkexec.
+    let install_direct = || -> std::io::Result<()> {
+        fs::create_dir_all("/etc/udev/rules.d")?;
+        fs::copy(&tmp, RULES_DST)?;
+        Ok(())
+    };
+
+    let direct_ok = install_direct().is_ok();
+    if direct_ok {
+        log::info!("[bootstrap] installed udev rules to {}", RULES_DST);
+        let _ = Command::new("udevadm")
+            .args(["control", "--reload-rules"])
+            .status();
+        let _ = Command::new("udevadm").arg("trigger").status();
+        let _ = fs::remove_file(&tmp);
+        return Ok(());
+    }
+
+    // pkexec prompt (interactive). If user cancels, keep going; OpenEx will still fail and logs will show why.
+    log::info!(
+        "[bootstrap] udev rules not present ({}). Attempting pkexec install...",
+        RULES_DST
+    );
+    let status = Command::new("pkexec")
+        .arg("sh")
+        .arg("-c")
+        .arg(
+            "install -m 0644 \"$1\" /etc/udev/rules.d/99-jlink.rules && udevadm control --reload-rules && udevadm trigger",
+        )
+        .arg("sh")
+        .arg(tmp.to_string_lossy().as_ref())
+        .status();
+
+    match status {
+        Ok(s) if s.success() => {
+            log::info!("[bootstrap] pkexec installed udev rules to {}", RULES_DST);
+        }
+        Ok(s) => {
+            log::warn!(
+                "[bootstrap] pkexec did not install udev rules (exit {:?}). USB access may fail until rules are installed.",
+                s.code()
+            );
+        }
+        Err(e) => {
+            log::warn!(
+                "[bootstrap] pkexec unavailable/failed: {}. USB access may fail until rules are installed.",
+                e
+            );
+        }
+    }
+
+    let _ = fs::remove_file(&tmp);
+    Ok(())
 }
 
 

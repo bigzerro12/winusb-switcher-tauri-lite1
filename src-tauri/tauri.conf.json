@@ -38,6 +38,7 @@
     ],
     "resources": [
       "resources/_bundle_manifest.txt",
+      "resources/segger-99-jlink.rules",
       "resources/jlink-runtime/**/*"
     ]
   },
