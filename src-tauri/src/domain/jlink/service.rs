@@ -166,6 +166,12 @@ impl JLinkService {
 
         Ok(switch_usb_via_bridge(probe_index, mode))
     }
+
+    pub fn update_firmware_only(_rt: &JLinkRuntime, probe_index: usize) -> AppResult<FirmwareUpdateResult> {
+        log::debug!("[jlink] update_firmware_only: probe[{}]", probe_index);
+        Self::ensure_bridge_loaded()?;
+        Ok(update_firmware_via_bridge(probe_index))
+    }
 }
 
 fn parse_discovery_firmware_string(s: &str) -> String {

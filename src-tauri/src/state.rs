@@ -7,12 +7,14 @@ use crate::infra::runtime::bundled::JLinkRuntime;
 /// Application state: the prepared SEGGER runtime (bridge-loaded) and related metadata.
 pub struct AppState {
     runtime: Mutex<Option<JLinkRuntime>>,
+    firmware_bootstrap_done: Mutex<bool>,
 }
 
 impl AppState {
     pub fn new() -> Self {
         Self {
             runtime: Mutex::new(None),
+            firmware_bootstrap_done: Mutex::new(false),
         }
     }
 
@@ -22,5 +24,16 @@ impl AppState {
 
     pub fn get_runtime(&self) -> Option<JLinkRuntime> {
         self.runtime.lock().unwrap().clone()
+    }
+
+    /// Returns true exactly once per app session.
+    /// Used to run one-time startup maintenance (e.g. firmware ensure).
+    pub fn take_firmware_bootstrap_slot(&self) -> bool {
+        let mut v = self.firmware_bootstrap_done.lock().unwrap();
+        if *v {
+            return false;
+        }
+        *v = true;
+        true
     }
 }

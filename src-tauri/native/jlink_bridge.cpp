@@ -652,6 +652,26 @@ char* jlink_bridge_update_firmware(int index) {
   // "updated" should reflect reality, not just API return codes.
   updated = updated || (!fw_after_s.empty() && fw_after_s != fw_before_s);
 
+  // If firmware was updated, mimic J-Link Commander flow: Sleep(100) -> Reboot -> Sleep(100).
+  // Some probes already reboot internally during update, but scheduling an explicit reboot helps
+  // make the mode-switch and post-update state deterministic for users.
+  bool reboot_unsupported = false;
+  if (updated) {
+    sleep_ms(100);
+    if (select_probe_usb_serial_first(*a, index, list)) {
+      const char* open_err2 = a->JLINKARM_OpenEx(&log_cb, &err_cb);
+      if (open_err2 == nullptr) {
+        std::string reboot_out = exec_out(*a, "ScheduleReboot");
+        if (contains_unknown_command(reboot_out)) {
+          reboot_out = exec_out(*a, "reboot");
+        }
+        reboot_unsupported = reboot_out.find("Command not supported by connected probe.") != std::string::npos;
+        a->JLINKARM_Close();
+      }
+    }
+    sleep_ms(100);
+  }
+
   std::ostringstream oss;
   // Keep detail concise and product-grade. Avoid embedding long workflow narration here.
   // Newlines will be flattened to ` | ` by json_escape_detail_for_json().
@@ -670,7 +690,8 @@ char* jlink_bridge_update_firmware(int index) {
   oss << "{\"status\":\"" << (updated ? "updated" : "current") << "\",\"firmware\":\""
       << json_escape(fw_after_s.c_str()) << "\",\"beforeFirmware\":\""
       << json_escape(fw_before_s.c_str()) << "\",\"serialNumber\":\""
-      << sel.SerialNumber << "\",\"detail\":\"" << json_escape_detail_for_json(detail) << "\",\"error\":\"\"}";
+      << sel.SerialNumber << "\",\"detail\":\"" << json_escape_detail_for_json(detail) << "\",\"rebootNotSupported\":"
+      << (reboot_unsupported ? "true" : "false") << ",\"error\":\"\"}";
   return dup_str(oss.str());
 }
 
@@ -755,6 +776,7 @@ char* jlink_bridge_switch_usb_driver(int index, int winusb) {
 
   // Close the JLINKARM session before reboot scheduling.
   a->JLINKARM_Close();
+  sleep_ms(100);
 
   // Reboot session
   if (!select_probe_usb_serial_first(*a, index, list)) {
@@ -772,6 +794,7 @@ char* jlink_bridge_switch_usb_driver(int index, int winusb) {
     reboot_out = exec_out(*a, "reboot");
   }
   a->JLINKARM_Close();
+  sleep_ms(100);
 
   bool reboot_unsupported = reboot_out.find("Command not supported by connected probe.") != std::string::npos;
   std::ostringstream oss;

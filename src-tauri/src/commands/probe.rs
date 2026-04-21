@@ -15,16 +15,55 @@ pub async fn detect_and_scan(
     log::debug!("[cmd] detect_and_scan: enter");
     let rt = state.get_runtime();
     let status = JLinkService::detect(rt.as_ref());
+    let run_firmware_bootstrap = status.installed && state.take_firmware_bootstrap_slot();
 
-    let probes = if status.installed {
+    let (probes, firmware_update) = if status.installed {
         let rt2 = rt.clone();
-        match tokio::task::spawn_blocking(move || -> AppResult<Vec<Probe>> {
+        match tokio::task::spawn_blocking(move || -> AppResult<(Vec<Probe>, serde_json::Value)> {
             let rt_ref = JLinkService::ensure_ready(rt2.as_ref())?;
-            JLinkService::scan_probes(rt_ref)
+
+            let mut update_attempted = false;
+            let mut updated = 0usize;
+            let mut current = 0usize;
+            let mut failed = 0usize;
+
+            let mut probes = JLinkService::scan_probes(rt_ref)?;
+
+            if run_firmware_bootstrap && !probes.is_empty() {
+                update_attempted = true;
+                for i in 0..probes.len() {
+                    match JLinkService::update_firmware_only(rt_ref, i) {
+                        Ok(crate::domain::jlink::types::FirmwareUpdateResult::Updated { .. }) => {
+                            updated += 1;
+                        }
+                        Ok(crate::domain::jlink::types::FirmwareUpdateResult::Current { .. }) => {
+                            current += 1;
+                        }
+                        Ok(crate::domain::jlink::types::FirmwareUpdateResult::Failed { .. }) => {
+                            failed += 1;
+                        }
+                        Err(_) => {
+                            failed += 1;
+                        }
+                    }
+                }
+
+                // Re-scan after any maintenance so firmware strings reflect reality post-reboot.
+                probes = JLinkService::scan_probes(rt_ref)?;
+            }
+
+            let summary = serde_json::json!({
+                "attempted": update_attempted,
+                "updated": updated,
+                "current": current,
+                "failed": failed
+            });
+
+            Ok((probes, summary))
         })
         .await
         {
-            Ok(Ok(probes)) => probes,
+            Ok(Ok((probes, fw_summary))) => (probes, fw_summary),
             Ok(Err(e)) => {
                 log::warn!("[cmd] detect_and_scan: scan failed: {}", e);
                 return Err(e);
@@ -35,7 +74,10 @@ pub async fn detect_and_scan(
             }
         }
     } else {
-        vec![]
+        (
+            vec![],
+            serde_json::json!({ "attempted": false, "updated": 0, "current": 0, "failed": 0 }),
+        )
     };
 
     log::debug!(
@@ -43,7 +85,7 @@ pub async fn detect_and_scan(
         status.installed,
         probes.len()
     );
-    Ok(serde_json::json!({ "status": status, "probes": probes }))
+    Ok(serde_json::json!({ "status": status, "probes": probes, "firmwareUpdate": firmware_update }))
 }
 
 /// Scan probes only (J-Link already known to be installed).
