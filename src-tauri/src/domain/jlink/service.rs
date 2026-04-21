@@ -98,7 +98,7 @@ impl JLinkService {
                 .as_deref()
                 .and_then(Self::format_version_for_ui)
                 .or_else(|| rt.version.clone());
-            log::info!(
+            log::debug!(
                 "[jlink] Runtime prepared: dir={} lib={} version={:?}",
                 rt.runtime_dir.display(),
                 rt.native_lib_path.display(),
@@ -121,10 +121,10 @@ impl JLinkService {
     }
 
     pub fn scan_probes(_rt: &JLinkRuntime) -> AppResult<Vec<Probe>> {
-        log::info!("[jlink] Scanning for probes...");
+        log::debug!("[jlink] scan_probes: start");
         Self::ensure_bridge_loaded()?;
         let probes = scan_probes_via_bridge()?;
-        log::info!("[jlink] scan_probes complete — {} probe(s)", probes.len());
+        log::info!("[jlink] scan_probes: {} probe(s)", probes.len());
         Ok(probes)
     }
 
@@ -186,14 +186,14 @@ fn parse_discovery_firmware_string(s: &str) -> String {
 }
 
 fn log_probes_summary(source: &str, probes: &[Probe]) {
-    log::info!(
+    log::debug!(
         "[jlink] scan summary [{}]: {} probe(s)",
         source,
         probes.len()
     );
     for (i, p) in probes.iter().enumerate() {
         let fw = p.firmware.as_deref().unwrap_or("(none)");
-        log::info!(
+        log::debug!(
             "[jlink]   [{}] sn={} nick={} product={} conn={} driver={} firmware={}",
             i,
             p.serial_number,
@@ -294,7 +294,7 @@ fn scan_probes_via_bridge() -> AppResult<Vec<Probe>> {
         });
     }
 
-    log::info!("[jlink] scan_probes: enumerated {} row(s)", probes.len());
+    log::debug!("[jlink] scan_probes: enumerated {} row(s)", probes.len());
     log_probes_summary("bridge", &probes);
     Ok(probes)
 }
