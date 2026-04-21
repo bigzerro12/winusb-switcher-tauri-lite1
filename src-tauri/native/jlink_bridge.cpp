@@ -548,7 +548,8 @@ char* jlink_bridge_update_firmware(int index) {
     set_err("invalid probe list or index");
     return nullptr;
   }
-  if (!select_probe(*a, index, list)) {
+  // With multiple USB probes, SelectByIndex can attach to the wrong unit; prefer USB serial.
+  if (!select_probe_usb_serial_first(*a, index, list)) {
     set_err("select probe failed");
     return nullptr;
   }
@@ -635,7 +636,7 @@ char* jlink_bridge_update_firmware(int index) {
   if (fw_after_s == fw_before_s) {
     for (int i = 0; i < 6; ++i) {
       sleep_ms(250);
-      if (!select_probe(*a, index, list)) continue;
+      if (!select_probe_usb_serial_first(*a, index, list)) continue;
       std::string retry_cap;
       const char* oe2 = open_ex_capture(*a, retry_cap);
       if (oe2 != nullptr) continue;
