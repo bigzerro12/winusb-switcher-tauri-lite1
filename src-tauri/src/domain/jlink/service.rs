@@ -3,8 +3,9 @@
 //! This is the only place `commands/` should call into for J-Link behavior.
 
 use crate::domain::jlink::types::{
-    FirmwareUpdateResult, InstallStatus, Probe, UsbDriverMode, UsbDriverResult,
+    FirmwareUpdateResult, InstallStatus, Probe, ProbeProvider, UsbDriverMode, UsbDriverResult,
 };
+use crate::domain::probe_backend::ProbeBackend;
 use crate::error::{AppError, AppResult};
 use crate::infra::jlink_backend::bridge;
 use crate::infra::runtime::bundled::JLinkRuntime;
@@ -174,6 +175,35 @@ impl JLinkService {
     }
 }
 
+// Backend abstraction implementation (enables future probe families without scattering branching logic).
+impl ProbeBackend for JLinkService {
+    type Runtime = JLinkRuntime;
+
+    fn diagnostics_json(runtime: Option<&Self::Runtime>) -> serde_json::Value {
+        Self::diagnostics_json(runtime)
+    }
+
+    fn detect(runtime: Option<&Self::Runtime>) -> InstallStatus {
+        Self::detect(runtime)
+    }
+
+    fn ensure_ready(runtime: Option<&Self::Runtime>) -> AppResult<&Self::Runtime> {
+        Self::ensure_ready(runtime)
+    }
+
+    fn scan_probes(rt: &Self::Runtime) -> AppResult<Vec<Probe>> {
+        Self::scan_probes(rt)
+    }
+
+    fn update_firmware_only(rt: &Self::Runtime, probe_index: usize) -> AppResult<FirmwareUpdateResult> {
+        Self::update_firmware_only(rt, probe_index)
+    }
+
+    fn switch_usb_driver(rt: &Self::Runtime, probe_index: usize, mode: UsbDriverMode) -> AppResult<UsbDriverResult> {
+        Self::switch_usb_driver(rt, probe_index, mode)
+    }
+}
+
 fn parse_discovery_firmware_string(s: &str) -> String {
     let s = s.trim();
     if s.is_empty() {
@@ -302,7 +332,7 @@ fn scan_probes_via_bridge() -> AppResult<Vec<Probe>> {
             serial_number: serial,
             product_name: row["productName"].as_str().unwrap_or("").to_string(),
             nick_name: row["nickName"].as_str().unwrap_or("").to_string(),
-            provider: "JLink".to_string(),
+            provider: ProbeProvider::JLink,
             connection: row["connection"].as_str().unwrap_or("").to_string(),
             driver: "Unknown".to_string(),
             firmware,

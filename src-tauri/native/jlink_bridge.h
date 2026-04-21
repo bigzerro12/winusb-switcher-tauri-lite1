@@ -18,7 +18,7 @@ void jlink_bridge_unload(void);
 /// Non-zero if `jlink_bridge_load` succeeded and the library is still mapped.
 int jlink_bridge_is_loaded(void);
 
-/// Thread-local / static buffer; valid until the next bridge call. Never free.
+/// Internal buffer; valid until the next bridge call. Never free.
 const char* jlink_bridge_last_error(void);
 
 /// JSON array: `[{"index":0,"serialNumber":"...","connection":"USB|IP","nickName":"...","productName":"..."},...]`
@@ -26,7 +26,7 @@ const char* jlink_bridge_last_error(void);
 char* jlink_bridge_list_probes_json(void);
 
 /// After open: firmware line containing "compiled <date>" or raw GetFirmwareString. Caller frees.
-/// OpenEx + GetFirmwareString for one list index. USB: selects by serial first; may auto-update FW if outdated.
+/// OpenEx + GetFirmwareString for one list index. USB: selects by serial first.
 char* jlink_bridge_probe_firmware(int index);
 
 /// `{"status":"updated"|"current"|"failed","firmware":"...","error":""}` — caller frees.

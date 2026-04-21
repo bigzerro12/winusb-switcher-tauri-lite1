@@ -2,8 +2,9 @@
 //! Thin wrappers that delegate to the jlink subsystem.
 
 use tauri::State;
-use crate::domain::jlink::service::JLinkService;
 use crate::domain::jlink::types::{Probe, UsbDriverMode, UsbDriverResult};
+use crate::domain::probe_facade;
+use crate::domain::probe_handle::ProbeHandle;
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 
@@ -14,20 +15,20 @@ pub async fn detect_and_scan(
 ) -> Result<serde_json::Value, AppError> {
     log::debug!("[cmd] detect_and_scan: enter");
     let rt = state.get_runtime();
-    let status = JLinkService::detect(rt.as_ref());
+    let status = probe_facade::detect(rt.as_ref());
     let run_firmware_bootstrap = status.installed && state.take_firmware_bootstrap_slot();
 
     let (probes, firmware_update) = if status.installed {
         let rt2 = rt.clone();
         match tokio::task::spawn_blocking(move || -> AppResult<(Vec<Probe>, serde_json::Value)> {
-            let rt_ref = JLinkService::ensure_ready(rt2.as_ref())?;
+            let rt_ref = probe_facade::ensure_ready(rt2.as_ref())?;
 
             let mut update_attempted = false;
             let mut updated = 0usize;
             let mut current = 0usize;
             let mut failed = 0usize;
 
-            let mut probes = JLinkService::scan_probes(rt_ref)?;
+            let mut probes = probe_facade::scan_probes(rt_ref)?;
 
             // Important: UpdateFirmwareIfNewer can take seconds even when "current".
             // To keep app startup snappy, only run the startup firmware ensure when firmware info
@@ -43,7 +44,7 @@ pub async fn detect_and_scan(
             if run_firmware_bootstrap && has_missing_fw {
                 update_attempted = true;
                 for i in 0..probes.len() {
-                    match JLinkService::update_firmware_only(rt_ref, i) {
+                    match probe_facade::update_firmware_only(rt_ref, i) {
                         Ok(crate::domain::jlink::types::FirmwareUpdateResult::Updated { .. }) => {
                             updated += 1;
                         }
@@ -60,7 +61,7 @@ pub async fn detect_and_scan(
                 }
 
                 // Re-scan after any maintenance so firmware strings reflect reality post-reboot.
-                probes = JLinkService::scan_probes(rt_ref)?;
+                probes = probe_facade::scan_probes(rt_ref)?;
             }
 
             let summary = serde_json::json!({
@@ -107,8 +108,8 @@ pub async fn scan_probes(
     log::debug!("[cmd] scan_probes: enter");
     let rt = state.get_runtime();
     let probes = match tokio::task::spawn_blocking(move || -> AppResult<Vec<Probe>> {
-        let rt_ref = JLinkService::ensure_ready(rt.as_ref())?;
-        JLinkService::scan_probes(rt_ref)
+        let rt_ref = probe_facade::ensure_ready(rt.as_ref())?;
+        probe_facade::scan_probes(rt_ref)
     })
     .await
     {
@@ -141,8 +142,8 @@ pub async fn switch_usb_driver(
     );
     let rt = state.get_runtime();
     let result = match tokio::task::spawn_blocking(move || -> AppResult<UsbDriverResult> {
-        let rt_ref = JLinkService::ensure_ready(rt.as_ref())?;
-        JLinkService::switch_usb_driver(rt_ref, probe_index, mode)
+        let rt_ref = probe_facade::ensure_ready(rt.as_ref())?;
+        probe_facade::switch_usb_driver(rt_ref, probe_index, mode)
     })
     .await
     {
@@ -169,6 +170,49 @@ pub async fn switch_usb_driver(
     Ok(result)
 }
 
+/// Switch USB driver by probe handle (provider-aware).
+///
+/// Prefer this over `switch_usb_driver` for multi-backend support.
+#[tauri::command]
+pub async fn switch_usb_driver_for(
+    probe: ProbeHandle,
+    mode: UsbDriverMode,
+    state: State<'_, AppState>,
+) -> Result<UsbDriverResult, AppError> {
+    log::info!(
+        "[cmd] switch_usb_driver_for: probe={:?} mode={:?}",
+        probe,
+        mode
+    );
+    let rt = state.get_runtime();
+    let result = match tokio::task::spawn_blocking(move || -> AppResult<UsbDriverResult> {
+        let rt_ref = probe_facade::ensure_ready(rt.as_ref())?;
+        probe_facade::switch_usb_driver_for(rt_ref, probe, mode)
+    })
+    .await
+    {
+        Ok(Ok(r)) => r,
+        Ok(Err(e)) => {
+            log::warn!("[cmd] switch_usb_driver_for failed: {}", e);
+            return Err(e);
+        }
+        Err(e) => {
+            log::warn!("[cmd] switch_usb_driver_for: blocking task failed: {}", e);
+            return Err(e.into());
+        }
+    };
+
+    if result.success {
+        log::debug!("[cmd] switch_usb_driver_for: ok");
+    } else {
+        log::warn!(
+            "[cmd] switch_usb_driver_for: reported failure: {:?}",
+            result.error
+        );
+    }
+    Ok(result)
+}
+
 /// Returns the compiled OS and CPU architecture of this binary.
 /// Values come from `std::env::consts` so they always match the actual build target.
 #[tauri::command]
@@ -184,5 +228,5 @@ pub fn get_arch_info() -> serde_json::Value {
 pub fn get_jlink_diagnostics(state: State<'_, AppState>) -> serde_json::Value {
     log::trace!("[cmd] get_jlink_diagnostics");
     let rt = state.get_runtime();
-    JLinkService::diagnostics_json(rt.as_ref())
+    probe_facade::diagnostics_json(rt.as_ref())
 }

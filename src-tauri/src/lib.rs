@@ -34,6 +34,7 @@ pub fn run() {
             probe::detect_and_scan,
             probe::scan_probes,
             probe::switch_usb_driver,
+            probe::switch_usb_driver_for,
             probe::get_arch_info,
             probe::get_jlink_diagnostics,
         ])

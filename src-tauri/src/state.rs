@@ -2,11 +2,11 @@
 
 use std::sync::Mutex;
 
-use crate::infra::runtime::bundled::JLinkRuntime;
+use crate::domain::probe_backend::ActiveRuntime;
 
 /// Application state: the prepared SEGGER runtime (bridge-loaded) and related metadata.
 pub struct AppState {
-    runtime: Mutex<Option<JLinkRuntime>>,
+    runtime: Mutex<Option<ActiveRuntime>>,
     firmware_bootstrap_done: Mutex<bool>,
 }
 
@@ -18,11 +18,11 @@ impl AppState {
         }
     }
 
-    pub fn set_runtime(&self, rt: JLinkRuntime) {
+    pub fn set_runtime(&self, rt: ActiveRuntime) {
         *self.runtime.lock().unwrap() = Some(rt);
     }
 
-    pub fn get_runtime(&self) -> Option<JLinkRuntime> {
+    pub fn get_runtime(&self) -> Option<ActiveRuntime> {
         self.runtime.lock().unwrap().clone()
     }
 

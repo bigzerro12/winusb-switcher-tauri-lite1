@@ -11,8 +11,16 @@ fn main() {
     println!("cargo:rerun-if-changed=native/Pal.h");
     println!("cargo:rerun-if-changed=native/JLinkARMDLL_Wrapper.cpp");
     println!("cargo:rerun-if-changed=native/JLinkARMDLL_Wrapper.h");
-    println!("cargo:rerun-if-changed=native/jlink_bridge.cpp");
     println!("cargo:rerun-if-changed=native/jlink_bridge.h");
+    println!("cargo:rerun-if-changed=native/jlink_bridge_api.cpp");
+    println!("cargo:rerun-if-changed=native/bridge_state.h");
+    println!("cargo:rerun-if-changed=native/bridge_state.cpp");
+    println!("cargo:rerun-if-changed=native/bridge_util.h");
+    println!("cargo:rerun-if-changed=native/bridge_util.cpp");
+    println!("cargo:rerun-if-changed=native/runtime_dirs.h");
+    println!("cargo:rerun-if-changed=native/runtime_dirs.cpp");
+    println!("cargo:rerun-if-changed=native/commander_exec.h");
+    println!("cargo:rerun-if-changed=native/commander_exec.cpp");
     println!("cargo:rerun-if-changed=native/JLinkARMDLL.h");
     println!("cargo:rerun-if-changed=native/JLINKARM_Const.h");
     println!("cargo:rerun-if-changed=native/TYPES.h");
@@ -24,7 +32,11 @@ fn main() {
         .include("native")
         .file("native/Pal.cpp")
         .file("native/JLinkARMDLL_Wrapper.cpp")
-        .file("native/jlink_bridge.cpp");
+        .file("native/bridge_state.cpp")
+        .file("native/bridge_util.cpp")
+        .file("native/runtime_dirs.cpp")
+        .file("native/commander_exec.cpp")
+        .file("native/jlink_bridge_api.cpp");
 
     let target_env = std::env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default();
     if target_env == "msvc" {

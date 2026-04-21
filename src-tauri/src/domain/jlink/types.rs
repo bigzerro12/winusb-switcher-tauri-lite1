@@ -4,6 +4,12 @@
 
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
+pub enum ProbeProvider {
+    JLink,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Probe {
     pub id: String,
@@ -13,7 +19,7 @@ pub struct Probe {
     pub product_name: String,
     #[serde(rename = "nickName")]
     pub nick_name: String,
-    pub provider: String,
+    pub provider: ProbeProvider,
     pub connection: String,
     pub driver: String,
     pub firmware: Option<String>,
