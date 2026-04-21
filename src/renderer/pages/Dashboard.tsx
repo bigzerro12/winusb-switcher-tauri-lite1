@@ -6,6 +6,7 @@ export default function Dashboard() {
   const {
     probes,
     isLoading,
+    isFirmwareRefreshing,
     isInstalled,
     installVersion,
     selectedProbeId,
@@ -85,6 +86,11 @@ export default function Dashboard() {
               {isLoading ? "Scanning..." : "Refresh list"}
             </button>
           </div>
+          {isFirmwareRefreshing && (
+            <div style={{ marginTop: "10px", fontSize: "12px", color: "#6b7280" }}>
+              Reading probe firmware… this may take a few seconds after first launch or after permissions changes.
+            </div>
+          )}
 
           <ProbeTable
             probes={probes}

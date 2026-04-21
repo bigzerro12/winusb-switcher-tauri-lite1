@@ -38,6 +38,7 @@ interface ProbeState {
   probes: Probe[];
   driverOverrides: Record<string, DriverType>;
   isLoading: boolean;
+  isFirmwareRefreshing: boolean;
   isInstalled: boolean | null;
   installPath: string | undefined;
   installVersion: string;
@@ -57,6 +58,7 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
   probes: [],
   driverOverrides: {},
   isLoading: false,
+  isFirmwareRefreshing: false,
   isInstalled: null,
   installPath: undefined,
   installVersion: "",
@@ -86,6 +88,31 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
         selectedProbeId,
         ...resetUsbOperationStatus(),
       });
+
+      // If firmware strings are missing on the first scan (common right after Linux udev setup
+      // or during cold start), retry silently a few times so the UI fills in without requiring
+      // the user to hit Refresh.
+      const needsFirmwareRetry = probes.some((p) => !p.firmware);
+      if (result.status.installed && needsFirmwareRetry) {
+        set({ isFirmwareRefreshing: true });
+        const overrides2 = get().driverOverrides;
+        const selectedBefore = get().selectedProbeId;
+        for (const delayMs of [600, 1400, 2600]) {
+          await new Promise((r) => setTimeout(r, delayMs));
+          try {
+            const cur = applyDriverOverrides(
+              await invoke<Probe[]>(COMMANDS.SCAN_PROBES),
+              overrides2
+            );
+            const selectedProbeId2 = preserveSelection(cur, selectedBefore);
+            set({ probes: cur, selectedProbeId: selectedProbeId2 });
+            if (cur.every((p) => !!p.firmware)) break;
+          } catch {
+            // ignore and keep retrying
+          }
+        }
+        set({ isFirmwareRefreshing: false });
+      }
     } catch (err) {
       set({
         isInstalled: false,
