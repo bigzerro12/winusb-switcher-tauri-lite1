@@ -1,0 +1,3 @@
+WinUSB Switcher Lite 1 (DLL edition)
+Windows: ships JLinkARM.dll + Firmwares under src-tauri/resources/jlink-runtime/ (copied from a local SEGGER J-Link package).
+Linux/macOS: still use the classic J-Link zip bundle if you restore resources/jlink/**/*.zip and run scripts/stage-jlink-for-build.mjs before build.

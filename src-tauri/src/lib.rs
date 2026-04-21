@@ -1,0 +1,37 @@
+//! WinUSB Switcher Lite — Tauri application entry point.
+
+mod commands;
+mod domain;
+mod bundled_jlink;
+mod error;
+mod jlink_ffi;
+mod platform;
+mod state;
+mod infra;
+
+use commands::{lite, probe};
+use state::AppState;
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .manage(AppState::new())
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .level(log::LevelFilter::Info)
+                .level_for("winusb_switcher_lite_lib", log::LevelFilter::Debug)
+                .build(),
+        )
+        .plugin(tauri_plugin_shell::init())
+        .invoke_handler(tauri::generate_handler![
+            lite::prepare_bundled_jlink,
+            // Probe
+            probe::detect_and_scan,
+            probe::scan_probes,
+            probe::switch_usb_driver,
+            probe::get_arch_info,
+            probe::get_jlink_diagnostics,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
