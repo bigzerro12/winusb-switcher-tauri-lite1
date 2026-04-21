@@ -5,6 +5,10 @@ use tauri::{AppHandle, State};
 use crate::state::AppState;
 
 /// Env var: optional full path to `JLink_x64.dll` / `JLinkARM.dll` for debugging (Windows).
+///
+/// This constant is referenced indirectly by end-user documentation; keep it stable even if
+/// some build targets do not use it.
+#[allow(dead_code)]
 pub const WINUSB_JLINK_DLL_OVERRIDE_ENV: &str = "WINUSB_JLINK_DLL_OVERRIDE";
 
 /// Prepare J-Link runtime.
