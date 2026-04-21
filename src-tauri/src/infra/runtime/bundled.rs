@@ -5,7 +5,10 @@
 //! - setting process environment (PATH/LD_LIBRARY_PATH on Linux, PATH on Windows)
 //! - loading the native bridge against the selected library (DLL/.so)
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
+
+#[cfg(target_os = "windows")]
+use std::path::Path;
 
 use tauri::AppHandle;
 
