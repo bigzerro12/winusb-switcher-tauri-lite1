@@ -2,7 +2,7 @@
 
 A **Tauri 2** desktop app that switches SEGGER J-Link probes to **WinUSB** driver mode. This tree (**Lite 1**) loads SEGGER’s J-Link **shared library in-process** via a small native bridge and ships a **trimmed J-Link runtime** under `src-tauri/resources/jlink-runtime/` (DLL / `.so` plus `Firmwares/`). There is **no** in-app download or SEGGER installer flow.
 
-Stack: **Rust** (`src-tauri`), **React + TypeScript** (`src/renderer`). See [`THIRD_PARTY.md`](THIRD_PARTY.md) for SEGGER redistribution reminders.
+Stack: **Rust** (`src-tauri`), **React + TypeScript** (`src/renderer`). Comply with SEGGER’s license and redistribution terms for any J-Link binaries you ship.
 
 ## Source branch
 
@@ -33,7 +33,7 @@ If `origin` was wrong (e.g. another user’s repo), fix it with `git remote set-
 
 ## Bundled J-Link runtime
 
-Layouts and required files are documented in [`src-tauri/README_JLINK_RUNTIME_LAYOUT.md`](src-tauri/README_JLINK_RUNTIME_LAYOUT.md). In short, each supported platform directory under `jlink-runtime` must contain the J-Link library and a sibling **`Firmwares/`** tree.
+Under `src-tauri/resources/jlink-runtime/`, each supported layout uses a directory per platform, for example `windows-64`, `windows-32`, `linux-64`, or `linux-32` (sometimes under a versioned parent such as `jlink-v936/<platform>/`). That directory must contain the J-Link shared library for the OS (`JLink_x64.dll`, `JLinkARM.dll`, or `libjlinkarm.so`) and a **`Firmwares/`** folder next to it with SEGGER firmware `.bin` files. The library resolves firmware relative to its own directory.
 
 **Optional zip-based staging:** If you maintain **`src-tauri/jlink-bundles/<os>/<arch>/JLink_V930a.zip`** (see [`.gitattributes`](.gitattributes)), run `yarn stage-jlink` before `tauri build` so `resources/jlink/...` is populated. The default **bundle resources** in `tauri.conf.json` follow **`resources/jlink-runtime/**/*`**; align resources with your packaging approach before release builds.
 
@@ -42,7 +42,7 @@ Layouts and required files are documented in [`src-tauri/README_JLINK_RUNTIME_LA
 | Platform | Bundled runtime | Notes |
 |----------|-----------------|--------|
 | **Windows x64 / x86** | `jlink-runtime/windows-*` | Native bridge loads `JLink_x64.dll` / `JLinkARM.dll`. |
-| **Linux x64 / x86** | `jlink-runtime/linux-*` | Uses `libjlinkarm.so`; udev / permissions — see [`docs/LINUX.md`](docs/LINUX.md). |
+| **Linux x64 / x86** | `jlink-runtime/linux-*` | Uses `libjlinkarm.so`; USB access needs correct **udev** rules (see **Troubleshooting**). |
 | **macOS** | Stub / partial | Universal/mac builds may use an empty zip stub from `stage-jlink` where no Darwin payload exists; full macOS support depends on supplying a real runtime. |
 
 ## Release and versioning
@@ -62,7 +62,7 @@ git push origin v1.1.0
 
 GitHub **Actions** → **Workflow permissions** → **Read and write** so the release job can upload assets.
 
-More process notes: [`docs/RELEASE.md`](docs/RELEASE.md). Manual QA: [`docs/MANUAL_TEST_CHECKLIST.md`](docs/MANUAL_TEST_CHECKLIST.md). Changelog: [`CHANGELOG.md`](CHANGELOG.md).
+For Windows releases, plan **Authenticode signing** (`signtool` or your CI) if you want to reduce SmartScreen warnings. If you change the webview **CSP** in `tauri.conf.json`, update it whenever the UI talks to new origins.
 
 ## Git LFS
 
@@ -94,13 +94,13 @@ yarn tauri:build    # production bundle
 
 ```text
 .
-├── docs/                       # Release, Linux, manual test checklist
 ├── scripts/
 │   ├── stage-jlink-for-build.mjs
 │   └── push-testing-remote.sh  # Optional second remote (main + LFS)
 ├── src/renderer/               # React UI
 ├── src/shared/types.ts         # IPC names / shared types
 └── src-tauri/
+    ├── icons/                  # App icons + R365-icon.png
     ├── resources/
     │   ├── jlink-runtime/      # Bundled J-Link libs + Firmwares (Git LFS)
     │   └── segger-99-jlink.rules
@@ -111,7 +111,7 @@ yarn tauri:build    # production bundle
 
 ## CI and LFS quota
 
-Workflows that need bundles or `jlink-runtime` should use **`actions/checkout@v4` with `lfs: true`** (see `build.yml`). If GitHub reports **LFS budget exceeded**, fix billing/LFS data packs on the owning account, or host large artifacts outside GitHub and adjust workflows — see comments in older release notes and [`docs/RELEASE.md`](docs/RELEASE.md).
+Workflows that need bundles or `jlink-runtime` should use **`actions/checkout@v4` with `lfs: true`** (see `build.yml`). If GitHub reports **LFS budget exceeded**, add LFS data on the owning account or host large artifacts outside GitHub and adjust workflows.
 
 ## Mirroring (optional)
 
@@ -128,8 +128,10 @@ Use SSH host aliases if two GitHub identities share one host name (see GitHub SS
 ## Troubleshooting
 
 - **LFS pointer / invalid zip / missing DLL** — `git lfs install && git lfs pull`, rebuild.
-- **Linux USB / udev** — [`docs/LINUX.md`](docs/LINUX.md); approve **`pkexec`** when prompted so rules and paths are installed.
-- **“Could not open J-Link shared library”** — Confirm real binaries under `jlink-runtime` (not pointers), `Firmwares/` present, and on Linux `ldd` / `libusb` as needed.
+- **Linux USB / udev** — Install SEGGER-compatible **udev** rules so your user can access the probe; reload rules or replug after changes. The app may use **`pkexec`** once to place rules under `/etc`; if you dismiss it, setup stays incomplete—try again from the app or copy rules manually, then `udevadm control --reload-rules && udevadm trigger` as appropriate.
+- **Linux `LD_LIBRARY_PATH`** — The app prepends the resolved runtime directory so dependent `.so` files next to `libjlinkarm.so` resolve; keep libraries and `Firmwares/` in a normal SEGGER-like layout.
+- **32-bit vs 64-bit on Linux** — Match the app binary to the `linux-32` vs `linux-64` runtime folder.
+- **“Could not open J-Link shared library”** — Confirm real binaries under `jlink-runtime` (not LFS pointers), `Firmwares/` present, and on Linux use `ldd` / ensure `libusb` and related deps are installed.
 
 ## License
 
