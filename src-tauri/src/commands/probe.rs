@@ -12,20 +12,37 @@ use crate::state::AppState;
 pub async fn detect_and_scan(
     state: State<'_, AppState>,
 ) -> Result<serde_json::Value, AppError> {
+    log::debug!("[cmd] detect_and_scan: enter");
     let rt = state.get_runtime();
     let status = JLinkService::detect(rt.as_ref());
 
     let probes = if status.installed {
         let rt2 = rt.clone();
-        tokio::task::spawn_blocking(move || -> AppResult<Vec<Probe>> {
+        match tokio::task::spawn_blocking(move || -> AppResult<Vec<Probe>> {
             let rt_ref = JLinkService::ensure_ready(rt2.as_ref())?;
             JLinkService::scan_probes(rt_ref)
         })
-        .await??
+        .await
+        {
+            Ok(Ok(probes)) => probes,
+            Ok(Err(e)) => {
+                log::warn!("[cmd] detect_and_scan: scan failed: {}", e);
+                return Err(e);
+            }
+            Err(e) => {
+                log::warn!("[cmd] detect_and_scan: blocking task failed: {}", e);
+                return Err(e.into());
+            }
+        }
     } else {
         vec![]
     };
 
+    log::debug!(
+        "[cmd] detect_and_scan: ok (installed={}, probes={})",
+        status.installed,
+        probes.len()
+    );
     Ok(serde_json::json!({ "status": status, "probes": probes }))
 }
 
@@ -34,12 +51,25 @@ pub async fn detect_and_scan(
 pub async fn scan_probes(
     state: State<'_, AppState>,
 ) -> Result<Vec<Probe>, AppError> {
+    log::debug!("[cmd] scan_probes: enter");
     let rt = state.get_runtime();
-    let probes = tokio::task::spawn_blocking(move || -> AppResult<Vec<Probe>> {
+    let probes = match tokio::task::spawn_blocking(move || -> AppResult<Vec<Probe>> {
         let rt_ref = JLinkService::ensure_ready(rt.as_ref())?;
         JLinkService::scan_probes(rt_ref)
     })
-    .await??;
+    .await
+    {
+        Ok(Ok(probes)) => probes,
+        Ok(Err(e)) => {
+            log::warn!("[cmd] scan_probes failed: {}", e);
+            return Err(e);
+        }
+        Err(e) => {
+            log::warn!("[cmd] scan_probes: blocking task failed: {}", e);
+            return Err(e.into());
+        }
+    };
+    log::debug!("[cmd] scan_probes: ok (count={})", probes.len());
     Ok(probes)
 }
 
@@ -51,12 +81,39 @@ pub async fn switch_usb_driver(
     mode: UsbDriverMode,
     state: State<'_, AppState>,
 ) -> Result<UsbDriverResult, AppError> {
+    log::info!(
+        "[cmd] switch_usb_driver: probe_index={} mode={:?}",
+        probe_index,
+        mode
+    );
     let rt = state.get_runtime();
-    tokio::task::spawn_blocking(move || -> AppResult<UsbDriverResult> {
+    let result = match tokio::task::spawn_blocking(move || -> AppResult<UsbDriverResult> {
         let rt_ref = JLinkService::ensure_ready(rt.as_ref())?;
         JLinkService::switch_usb_driver(rt_ref, probe_index, mode)
     })
-    .await?
+    .await
+    {
+        Ok(Ok(r)) => r,
+        Ok(Err(e)) => {
+            log::warn!("[cmd] switch_usb_driver failed: {}", e);
+            return Err(e);
+        }
+        Err(e) => {
+            log::warn!("[cmd] switch_usb_driver: blocking task failed: {}", e);
+            return Err(e.into());
+        }
+    };
+
+    if result.success {
+        log::debug!("[cmd] switch_usb_driver: probe_index={} ok", probe_index);
+    } else {
+        log::warn!(
+            "[cmd] switch_usb_driver: probe_index={} reported failure: {:?}",
+            probe_index,
+            result.error
+        );
+    }
+    Ok(result)
 }
 
 /// Returns the compiled OS and CPU architecture of this binary.
@@ -72,6 +129,7 @@ pub fn get_arch_info() -> serde_json::Value {
 /// Runtime / bridge / bundle layout snapshot for support and debugging.
 #[tauri::command]
 pub fn get_jlink_diagnostics(state: State<'_, AppState>) -> serde_json::Value {
+    log::trace!("[cmd] get_jlink_diagnostics");
     let rt = state.get_runtime();
     JLinkService::diagnostics_json(rt.as_ref())
 }

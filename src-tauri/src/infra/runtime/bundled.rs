@@ -29,9 +29,17 @@ fn parent_or_self(p: &Path) -> PathBuf {
 #[cfg(target_os = "windows")]
 pub fn prepare(app: &AppHandle, override_dll: Option<PathBuf>) -> AppResult<JLinkRuntime> {
     let dll_path = if let Some(p) = override_dll {
+        log::info!(
+            "[bootstrap] WINUSB_JLINK_DLL_OVERRIDE: using {}",
+            p.display()
+        );
         if p.is_file() {
             p
         } else {
+            log::warn!(
+                "[bootstrap] WINUSB_JLINK_DLL_OVERRIDE path is not a file: {}",
+                p.display()
+            );
             return Err(AppError::Internal(format!(
                 "WINUSB_JLINK_DLL_OVERRIDE points to a missing file: {}",
                 p.display()
@@ -42,7 +50,14 @@ pub fn prepare(app: &AppHandle, override_dll: Option<PathBuf>) -> AppResult<JLin
     };
 
     crate::jlink_ffi::bridge_load(&dll_path)
-        .map_err(|e| AppError::Internal(format!("bridge_load: {}", e)))?;
+        .map_err(|e| {
+            log::warn!(
+                "[bootstrap] bridge_load failed for {}: {}",
+                dll_path.display(),
+                e
+            );
+            AppError::Internal(format!("bridge_load: {}", e))
+        })?;
 
     std::env::set_var(
         crate::bundled_jlink::WINUSB_JLINK_DLL_PATH_ENV,
@@ -53,6 +68,12 @@ pub fn prepare(app: &AppHandle, override_dll: Option<PathBuf>) -> AppResult<JLin
     crate::platform::ensure_jlink_runtime_env(&runtime_dir.to_string_lossy());
 
     let version = crate::jlink_ffi::dll_version_string();
+    log::debug!(
+        "[bootstrap] Windows SEGGER bridge ready: dir={} lib={} version={:?}",
+        runtime_dir.display(),
+        dll_path.display(),
+        version
+    );
     Ok(JLinkRuntime {
         runtime_dir,
         native_lib_path: dll_path,
@@ -74,6 +95,10 @@ pub fn prepare(app: &AppHandle) -> AppResult<JLinkRuntime> {
         .find(|p| p.is_file())
         .cloned()
         .ok_or_else(|| {
+            log::warn!(
+                "[bootstrap] no libjlinkarm.so in {} (candidates checked)",
+                runtime_dir.display()
+            );
             AppError::Internal(format!(
                 "Bundled libjlinkarm not found in {} (expected libjlinkarm.so or libjlinkarm.so.9)",
                 runtime_dir.display()
@@ -81,7 +106,14 @@ pub fn prepare(app: &AppHandle) -> AppResult<JLinkRuntime> {
         })?;
 
     crate::jlink_ffi::bridge_load(&lib_path)
-        .map_err(|e| AppError::Internal(format!("bridge_load: {}", e)))?;
+        .map_err(|e| {
+            log::warn!(
+                "[bootstrap] bridge_load failed for {}: {}",
+                lib_path.display(),
+                e
+            );
+            AppError::Internal(format!("bridge_load: {}", e))
+        })?;
 
     std::env::set_var(
         crate::bundled_jlink::WINUSB_JLINK_DLL_PATH_ENV,
@@ -89,6 +121,12 @@ pub fn prepare(app: &AppHandle) -> AppResult<JLinkRuntime> {
     );
 
     let version = crate::jlink_ffi::dll_version_string();
+    log::debug!(
+        "[bootstrap] Linux SEGGER bridge ready: dir={} lib={} version={:?}",
+        runtime_dir.display(),
+        lib_path.display(),
+        version
+    );
     Ok(JLinkRuntime {
         runtime_dir,
         native_lib_path: lib_path,

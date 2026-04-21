@@ -14,14 +14,19 @@ use state::AppState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let mut log_builder = tauri_plugin_log::Builder::new()
+        .level(log::LevelFilter::Info)
+        .level_for("winusb_switcher_lite_lib", log::LevelFilter::Debug);
+    #[cfg(debug_assertions)]
+    {
+        log_builder = log_builder.target(tauri_plugin_log::Target::new(
+            tauri_plugin_log::TargetKind::Webview,
+        ));
+    }
+
     tauri::Builder::default()
         .manage(AppState::new())
-        .plugin(
-            tauri_plugin_log::Builder::new()
-                .level(log::LevelFilter::Info)
-                .level_for("winusb_switcher_lite_lib", log::LevelFilter::Debug)
-                .build(),
-        )
+        .plugin(log_builder.build())
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             lite::prepare_bundled_jlink,

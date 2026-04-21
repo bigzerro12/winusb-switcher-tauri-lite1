@@ -110,6 +110,9 @@ impl JLinkService {
                 version: ui_version,
             };
         }
+        log::debug!(
+            "[jlink] detect: runtime not prepared yet (prepare_bundled_jlink not completed)"
+        );
         InstallStatus {
             installed: false,
             path: None,
@@ -130,11 +133,16 @@ impl JLinkService {
         probe_index: usize,
         mode: UsbDriverMode,
     ) -> AppResult<UsbDriverResult> {
-        log::info!("[jlink] Switching probe[{}] USB driver to {:?}", probe_index, mode);
+        log::debug!("[jlink] switch_usb_driver: probe[{}] mode={:?}", probe_index, mode);
         Self::ensure_bridge_loaded()?;
 
         match update_firmware_via_bridge(probe_index) {
             FirmwareUpdateResult::Failed { error } => {
+                log::warn!(
+                    "[jlink] firmware update failed before USB driver switch (probe[{}]): {}",
+                    probe_index,
+                    error
+                );
                 return Ok(UsbDriverResult {
                     success: false,
                     error: Some(format!("Firmware update failed: {}", error)),
@@ -203,8 +211,14 @@ fn scan_probes_via_bridge() -> AppResult<Vec<Probe>> {
 
     let json = bridge::list_probes_json().map_err(AppError::from)?;
     log::trace!("[jlink] list_probes_json: {} bytes", json.len());
-    let rows: Vec<Value> =
-        serde_json::from_str(&json).map_err(|e| AppError::Internal(e.to_string()))?;
+    let rows: Vec<Value> = serde_json::from_str(&json).map_err(|e| {
+        log::warn!(
+            "[jlink][bridge] list_probes JSON parse failed ({} bytes): {}",
+            json.len(),
+            e
+        );
+        AppError::Internal(e.to_string())
+    })?;
 
     let mut probes = Vec::new();
     for row in rows {
@@ -277,24 +291,39 @@ fn update_firmware_via_bridge(probe_index: usize) -> FirmwareUpdateResult {
                 let status = v["status"].as_str().unwrap_or("");
                 let fw = v["firmware"].as_str().unwrap_or("").to_string();
                 match status {
-                    "failed" => FirmwareUpdateResult::Failed {
-                        error: v["error"]
+                    "failed" => {
+                        let msg = v["error"]
                             .as_str()
                             .unwrap_or("firmware update failed")
-                            .to_string(),
-                    },
+                            .to_string();
+                        log::warn!(
+                            "[jlink][bridge] firmware update reported failed (probe[{}]): {}",
+                            probe_index,
+                            msg
+                        );
+                        FirmwareUpdateResult::Failed { error: msg }
+                    }
                     "updated" => FirmwareUpdateResult::Updated { firmware: fw },
                     _ => FirmwareUpdateResult::Current {
                         firmware: if fw.is_empty() { "n/a".to_string() } else { fw },
                     },
                 }
             }
-            Err(e) => FirmwareUpdateResult::Failed {
-                error: e.to_string(),
-            },
+            Err(e) => {
+                log::warn!(
+                    "[jlink][bridge] firmware update response is not valid JSON: {}",
+                    e
+                );
+                FirmwareUpdateResult::Failed {
+                    error: e.to_string(),
+                }
+            }
         },
-        Err(e) => FirmwareUpdateResult::Failed {
-            error: e.to_string(),
+        Err(e) => {
+            log::warn!("[jlink][bridge] update_firmware_json failed: {}", e);
+            FirmwareUpdateResult::Failed {
+                error: e.to_string(),
+            }
         },
     }
 }
@@ -329,18 +358,35 @@ fn switch_usb_via_bridge(probe_index: usize, mode: UsbDriverMode) -> UsbDriverRe
                     reboot_not_supported: v["rebootNotSupported"].as_bool().unwrap_or(false),
                 }
             }
-            Err(e) => UsbDriverResult {
+            Err(e) => {
+                log::warn!(
+                    "[jlink][bridge] switch_usb response is not valid JSON: {}",
+                    e
+                );
+                UsbDriverResult {
+                    success: false,
+                    error: Some(format!(
+                        "{}\n\n(native detail)\n{}",
+                        e,
+                        bridge::last_error()
+                    )),
+                    detail: Some(bridge::last_error()),
+                    reboot_not_supported: false,
+                }
+            }
+        },
+        Err(e) => {
+            log::warn!("[jlink][bridge] switch_usb_json failed: {}", e);
+            UsbDriverResult {
                 success: false,
-                error: Some(format!("{}\n\n(native detail)\n{}", e, bridge::last_error())),
+                error: Some(format!(
+                    "{}\n\n(native detail)\n{}",
+                    e,
+                    bridge::last_error()
+                )),
                 detail: Some(bridge::last_error()),
                 reboot_not_supported: false,
-            },
-        },
-        Err(e) => UsbDriverResult {
-            success: false,
-            error: Some(format!("{}\n\n(native detail)\n{}", e, bridge::last_error())),
-            detail: Some(bridge::last_error()),
-            reboot_not_supported: false,
+            }
         },
     }
 }

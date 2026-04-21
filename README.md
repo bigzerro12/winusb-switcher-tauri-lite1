@@ -1,137 +1,149 @@
-# WinUSB Switcher Lite (Tauri)
+# WinUSB Switcher Lite
 
-A **Tauri 2** desktop app that switches SEGGER J-Link probes to **WinUSB** driver mode. This tree (**Lite 1**) loads SEGGER’s J-Link **shared library in-process** via a small native bridge and ships a **trimmed J-Link runtime** under `src-tauri/resources/jlink-runtime/` (DLL / `.so` plus `Firmwares/`). There is **no** in-app download or SEGGER installer flow.
+Desktop utility built with **Tauri 2** for switching SEGGER **J-Link** USB probes between **WinUSB** and the default SEGGER USB stack (where supported). The application loads SEGGER’s J-Link **shared library in-process** through a small native bridge and ships a **trimmed runtime** under `src-tauri/resources/jlink-runtime/` (Windows DLLs or Linux `.so`, plus an adjacent **`Firmwares/`** tree). There is **no** in-app download, installer, or auto-update flow for SEGGER software.
 
-Stack: **Rust** (`src-tauri`), **React + TypeScript** (`src/renderer`). Comply with SEGGER’s license and redistribution terms for any J-Link binaries you ship.
+**Stack:** Rust (`src-tauri`), React 18, TypeScript, Vite, Tailwind.  
+**Compliance:** You are responsible for adhering to **SEGGER’s license and redistribution terms** for any J-Link binaries, firmware images, or documentation you bundle or ship.
 
-## Source branch
+---
 
-Ongoing work for this variant is tracked on Git branch **`winusb-switcher-tauri-lite1`**. CI runs on **`main`**, **`master`**, and **`winusb-switcher-tauri-lite1`**.
+## Features
 
-Canonical personal remote for this line of work: **`https://github.com/ntgiahuy25d/winusb-switcher-tauri-lite1.git`** (branch **`winusb-switcher-tauri-lite1`**). If your GitHub user is different, substitute it in the URL.
+- **Bootstrap** — Locates the bundled runtime, loads the native bridge, and configures process environment (`PATH` on Windows; `PATH` and `LD_LIBRARY_PATH` on Linux as needed).
+- **Probe discovery** — Lists connected probes (serial, product, nickname, connection, firmware string).
+- **USB driver mode** — Initiates driver switch workflow (including firmware check/update step via the SEGGER API where applicable).
+- **Diagnostics** — `get_jlink_diagnostics` IPC command exposes runtime paths, bridge state, and version fields for support.
 
-**Create the empty GitHub repo once** (no README, no `.gitignore`, no license — you already have those locally):
+---
 
-1. **GitHub CLI** (after `gh auth login`):
+## Supported platforms
 
-   ```bash
-   cd /path/to/winusb-switcher-tauri-lite1
-   git remote remove origin 2>/dev/null || true
-   gh repo create winusb-switcher-tauri-lite1 --public --source=. --remote=origin --push
-   git lfs push origin winusb-switcher-tauri-lite1 --all
-   ```
+| Platform | Status | Notes |
+|----------|--------|--------|
+| **Windows** (x64, x86) | Supported | Bundled `JLink_x64.dll` or `JLinkARM.dll` under `jlink-runtime/windows-*`. |
+| **Linux** (x64, x86) | Supported | Bundled `libjlinkarm.so` (or `.so.9`); **udev** rules required for reliable USB access. |
+| **macOS** | Limited | Packaging may rely on stubs unless a full Darwin runtime is supplied; validate before release. |
 
-2. **Or in the browser:** [github.com/new](https://github.com/new) → Repository name **`winusb-switcher-tauri-lite1`** → **Create repository**, then:
+---
 
-   ```bash
-   git remote set-url origin https://github.com/ntgiahuy25d/winusb-switcher-tauri-lite1.git
-   git push -u origin winusb-switcher-tauri-lite1
-   git lfs push origin winusb-switcher-tauri-lite1 --all
-   ```
+## Bundled runtime layout
 
-If `origin` was wrong (e.g. another user’s repo), fix it with `git remote set-url origin <your-clone-url>` before pushing.
+Under `src-tauri/resources/jlink-runtime/`, each target uses a per-platform directory, for example:
 
-## Bundled J-Link runtime
+- `windows-64`, `windows-32`, `linux-64`, `linux-32`
 
-Under `src-tauri/resources/jlink-runtime/`, each supported layout uses a directory per platform, for example `windows-64`, `windows-32`, `linux-64`, or `linux-32` (sometimes under a versioned parent such as `jlink-v936/<platform>/`). That directory must contain the J-Link shared library for the OS (`JLink_x64.dll`, `JLinkARM.dll`, or `libjlinkarm.so`) and a **`Firmwares/`** folder next to it with SEGGER firmware `.bin` files. The library resolves firmware relative to its own directory.
+A **versioned** layout is also supported, e.g. `jlink-v936/<platform>/` (see `bundled_jlink.rs` for resolution order).
 
-**Optional zip-based staging:** If you maintain **`src-tauri/jlink-bundles/<os>/<arch>/JLink_V930a.zip`** (see [`.gitattributes`](.gitattributes)), run `yarn stage-jlink` before `tauri build` so `resources/jlink/...` is populated. The default **bundle resources** in `tauri.conf.json` follow **`resources/jlink-runtime/**/*`**; align resources with your packaging approach before release builds.
+**Each platform directory must contain:**
 
-## Platforms (summary)
+1. The J-Link library for that OS (`JLink_x64.dll`, `JLinkARM.dll`, or `libjlinkarm.so` / `libjlinkarm.so.9`).
+2. A **`Firmwares/`** directory next to that library, with the `.bin` files the SEGGER stack expects.
 
-| Platform | Bundled runtime | Notes |
-|----------|-----------------|--------|
-| **Windows x64 / x86** | `jlink-runtime/windows-*` | Native bridge loads `JLink_x64.dll` / `JLinkARM.dll`. |
-| **Linux x64 / x86** | `jlink-runtime/linux-*` | Uses `libjlinkarm.so`; USB access needs correct **udev** rules (see **Troubleshooting**). |
-| **macOS** | Stub / partial | Universal/mac builds may use an empty zip stub from `stage-jlink` where no Darwin payload exists; full macOS support depends on supplying a real runtime. |
+**Optional zip staging:** If you maintain `src-tauri/jlink-bundles/<os>/<arch>/JLink_V930a.zip` (see [`.gitattributes`](.gitattributes)), run `yarn stage-jlink` before a raw `tauri` / `cargo` build. The default [`tauri.conf.json`](src-tauri/tauri.conf.json) bundles **`resources/jlink-runtime/**/*`**; keep that aligned with your packaging strategy.
 
-## Release and versioning
+---
 
-- **CI:** `.github/workflows/ci.yml` — frontend `yarn build`, Rust `clippy` / `test` / `release` build (Ubuntu + Windows).
-- **Installers / GitHub Release:** `.github/workflows/build.yml` — tag `v*` (and manual dispatch); release job uploads artifacts when a tag is pushed.
+## Requirements
 
-**Maintainers:** Keep the same semver in `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml` (no `v` prefix in those files). After editing `Cargo.toml`, run `cargo check --manifest-path src-tauri/Cargo.toml` so `Cargo.lock` stays in sync.
+- **Node.js** 20 (or compatible LTS)
+- **Yarn** classic (v1) — `yarn.lock` in repo
+- **Rust** stable (via [rustup](https://rustup.rs/))
+- OS packages for **Tauri / WebView** per [Tauri prerequisites](https://tauri.app/start/prerequisites/)
 
-```bash
-git checkout main && git pull
-# bump versions, commit
-git tag v1.1.0
-git push origin main
-git push origin v1.1.0
-```
-
-GitHub **Actions** → **Workflow permissions** → **Read and write** so the release job can upload assets.
-
-For Windows releases, plan **Authenticode signing** (`signtool` or your CI) if you want to reduce SmartScreen warnings. If you change the webview **CSP** in `tauri.conf.json`, update it whenever the UI talks to new origins.
-
-## Git LFS
-
-Large binaries under **`src-tauri/resources/jlink-runtime/`** and optional **`src-tauri/jlink-bundles/`** zips use **Git LFS** (see [`.gitattributes`](.gitattributes)).
-
-```bash
-git lfs install
-git clone <repo-url>
-cd <repo>
-git lfs pull
-```
-
-If runtime files appear as tiny pointer text files or the app reports corrupt payloads, run **`git lfs pull`** and rebuild.
+---
 
 ## Development
 
-Prerequisites: **Node.js 20** (or compatible), **Yarn classic (v1)**, **Rust** (stable), and [Tauri prerequisites](https://tauri.app/start/prerequisites/) for your OS.
-
 ```bash
+git lfs install
+git clone <repository-url>
+cd <repository-root>
+git lfs pull
+
 yarn install
-yarn tauri:dev      # Vite + Tauri; use this for IPC and J-Link (not `yarn dev` alone)
-yarn tauri:build    # production bundle
+yarn tauri:dev    # Full app: Vite + Tauri (required for IPC and J-Link)
+yarn tauri:build  # Release-style bundle
 ```
 
-- **`yarn dev`** — Vite only; Tauri IPC and backend commands will not work.
-- **`yarn stage-jlink`** — Run when using the **zip** staging path (`jlink-bundles/`) with raw `tauri` / `cargo` invocations.
+- **`yarn dev`** — Frontend only (Vite). Tauri commands and J-Link integration will not run.
+- **`yarn stage-jlink`** — Stages the zip for the current target when using the `jlink-bundles/` workflow outside `tauri dev` / `tauri build`.
 
-## Project layout (high level)
+---
+
+## Configuration and debugging
+
+| Item | Description |
+|------|-------------|
+| **`WINUSB_JLINK_DLL_OVERRIDE`** (Windows) | Optional absolute path to `JLink_x64.dll` or `JLinkARM.dll` to force-load a specific SEGGER build (e.g. compare against the bundled tree). |
+| **Logging** | Backend uses `log` + `tauri-plugin-log` (stdout, app log directory, and webview target in debug). Adjust levels in [`src-tauri/src/lib.rs`](src-tauri/src/lib.rs). |
+| **CSP** | Content Security Policy for the webview is set in [`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json); update it if the UI needs additional origins. |
+
+---
+
+## Version control and Git LFS
+
+Large artifacts under `src-tauri/resources/jlink-runtime/` and optional `jlink-bundles/` are tracked with **Git LFS** ([`.gitattributes`](.gitattributes)).
+
+```bash
+git lfs install
+git lfs pull
+```
+
+If clones contain tiny **LFS pointer** files instead of real binaries, run `git lfs pull` and rebuild.
+
+**CI:** Use `actions/checkout@v4` with `lfs: true` when workflows compile or bundle the app (see [`.github/workflows/build.yml`](.github/workflows/build.yml)). Large LFS bandwidth on hosted runners may require a paid **Git LFS** data plan or hosting binaries outside the default remote.
+
+---
+
+## Continuous integration and releases
+
+| Workflow | Purpose |
+|----------|---------|
+| [`ci.yml`](.github/workflows/ci.yml) | Frontend `yarn build`; Rust `clippy`, tests, and release build on Ubuntu and Windows. Triggers on pushes/PRs to `main`, `master`, and `winusb-switcher-tauri-lite1`. |
+| [`build.yml`](.github/workflows/build.yml) | Multi-platform installers; **release** job runs on `v*` tag pushes (and manual dispatch). |
+
+**Release checklist (maintainers):**
+
+1. Align **semver** in `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml` (no `v` prefix in those files).
+2. Run `cargo check --manifest-path src-tauri/Cargo.toml` after changing `Cargo.toml` so `Cargo.lock` stays consistent.
+3. Tag `vX.Y.Z`, push the tag, and confirm workflow artifacts attach to the release.
+4. Grant GitHub Actions **workflow read/write** permission where needed so release assets can be published.
+5. For Windows, use **Authenticode** signing in CI or post-build if you want fewer SmartScreen warnings for unsigned builds.
+
+---
+
+## Repository layout
 
 ```text
 .
 ├── scripts/
 │   ├── stage-jlink-for-build.mjs
-│   └── push-testing-remote.sh  # Optional second remote (main + LFS)
-├── src/renderer/               # React UI
-├── src/shared/types.ts         # IPC names / shared types
+│   └── push-testing-remote.sh    # Optional: push main + LFS to another remote
+├── src/renderer/                 # React UI
+├── src/shared/types.ts           # IPC contracts / shared types
 └── src-tauri/
-    ├── icons/                  # App icons + R365-icon.png
+    ├── icons/                    # Application icons
     ├── resources/
-    │   ├── jlink-runtime/      # Bundled J-Link libs + Firmwares (Git LFS)
+    │   ├── jlink-runtime/        # Bundled SEGGER runtime (Git LFS)
     │   └── segger-99-jlink.rules
-    ├── native/                 # C++ bridge (Pal, J-Link DLL wrapper)
-    ├── jlink-bundles/          # Optional per-OS zips (Git LFS), if used
-    └── src/                    # Rust commands, J-Link service
+    ├── native/                   # C++ bridge (J-Link DLL / .so integration)
+    ├── jlink-bundles/            # Optional per-OS zips (Git LFS), if used
+    └── src/                      # Rust: commands, domain, FFI
 ```
 
-## CI and LFS quota
-
-Workflows that need bundles or `jlink-runtime` should use **`actions/checkout@v4` with `lfs: true`** (see `build.yml`). If GitHub reports **LFS budget exceeded**, add LFS data on the owning account or host large artifacts outside GitHub and adjust workflows.
-
-## Mirroring (optional)
-
-To push **`main`** and tags to a second remote (e.g. testing account), use a **separate `git remote`**, authenticate as a user with **write** access, then:
-
-```bash
-git push <remote> main
-git push <remote> v1.1.0
-git lfs push <remote> main
-```
-
-Use SSH host aliases if two GitHub identities share one host name (see GitHub SSH docs).
+---
 
 ## Troubleshooting
 
-- **LFS pointer / invalid zip / missing DLL** — `git lfs install && git lfs pull`, rebuild.
-- **Linux USB / udev** — Install SEGGER-compatible **udev** rules so your user can access the probe; reload rules or replug after changes. The app may use **`pkexec`** once to place rules under `/etc`; if you dismiss it, setup stays incomplete—try again from the app or copy rules manually, then `udevadm control --reload-rules && udevadm trigger` as appropriate.
-- **Linux `LD_LIBRARY_PATH`** — The app prepends the resolved runtime directory so dependent `.so` files next to `libjlinkarm.so` resolve; keep libraries and `Firmwares/` in a normal SEGGER-like layout.
-- **32-bit vs 64-bit on Linux** — Match the app binary to the `linux-32` vs `linux-64` runtime folder.
-- **“Could not open J-Link shared library”** — Confirm real binaries under `jlink-runtime` (not LFS pointers), `Firmwares/` present, and on Linux use `ldd` / ensure `libusb` and related deps are installed.
+| Symptom | What to try |
+|---------|-------------|
+| Corrupt DLL / missing firmware / invalid zip | Ensure `git lfs pull` completed; confirm `Firmwares/` sits beside the loaded library. |
+| Linux: permission denied on USB | Install SEGGER-compatible **udev** rules; replug probe or reload rules (`udevadm`). The app may prompt via **`pkexec`** to install rules—canceling leaves setup incomplete. |
+| Linux: wrong ELF / `.so` not found | Match app architecture to `linux-32` vs `linux-64`; check `LD_LIBRARY_PATH` and `ldd` on `JLinkExe` / bundled libs if you customize layout. |
+| “Runtime not prepared” | Call **`prepare_bundled_jlink`** from the UI bootstrap before probe operations. |
+| CI LFS errors | Increase LFS quota, mirror blobs, or adjust workflows to fetch assets from object storage. |
+
+---
 
 ## License
 
