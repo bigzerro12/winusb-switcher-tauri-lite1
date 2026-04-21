@@ -186,13 +186,13 @@ struct ScopedCwd {
   }
 };
 
-static std::string get_current_directory_a() {
+[[maybe_unused]] static std::string get_current_directory_a() {
   char buf[PATH_MAX] = {};
   if (!getcwd(buf, sizeof(buf))) return {};
   return std::string(buf);
 }
 
-static bool file_exists_a(const std::string& path) {
+[[maybe_unused]] static bool file_exists_a(const std::string& path) {
   if (path.empty()) return false;
   return access(path.c_str(), R_OK) == 0;
 }
@@ -354,7 +354,7 @@ static bool callback_log_suggests_firmware_activity(const std::string& s) {
          s.find("Waiting for new firmware") != std::string::npos;
 }
 
-static std::string guess_firmware_bin_name(const JLINKARM_EMU_CONNECT_INFO& e) {
+[[maybe_unused]] static std::string guess_firmware_bin_name(const JLINKARM_EMU_CONNECT_INFO& e) {
   const char* p = e.acProduct;
   if (!p || !p[0]) return "JLink_OB_S124.bin";
   std::string s(p);
@@ -363,12 +363,12 @@ static std::string guess_firmware_bin_name(const JLINKARM_EMU_CONNECT_INFO& e) {
   return "JLink_OB_S124.bin";
 }
 
-static bool contains_connect_ok(const std::string& s) {
+[[maybe_unused]] static bool contains_connect_ok(const std::string& s) {
   return s.find("Connecting to J-Link") != std::string::npos &&
          (s.find("O.K.") != std::string::npos || s.find("OK") != std::string::npos);
 }
 
-static bool contains_connect_failed(const std::string& s) {
+[[maybe_unused]] static bool contains_connect_failed(const std::string& s) {
   return s.find("Connecting to J-Link") != std::string::npos &&
          (s.find("FAILED") != std::string::npos || s.find("Cannot connect") != std::string::npos);
 }
@@ -657,8 +657,8 @@ char* jlink_bridge_update_firmware(int index) {
       env_diag.str() +
       std::string("Index=") + std::to_string(index) +
       "\nSerial=" + std::to_string(sel.SerialNumber) +
-      "\nProduct=" + std::string(sel.acProduct ? sel.acProduct : "") +
-      "\nNickname=" + std::string(sel.acNickName ? sel.acNickName : "") +
+      "\nProduct=" + std::string(sel.acProduct) +
+      "\nNickname=" + std::string(sel.acNickName) +
       "\n\n[note] WinUSBSwitcher demo flow: load → set CWD/DLL dir from loadedPath → OpenEx → "
       "GetFirmwareString → JLINKARM_UpdateFirmwareIfNewer only (no JLINKARM_Connect). "
       "If GetSN mismatches expected_serial, wrong probe. If firmware_file_exists=no, fix bundle layout."

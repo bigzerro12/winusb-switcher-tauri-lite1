@@ -11,6 +11,8 @@ use std::path::PathBuf;
 use std::path::Path;
 
 use tauri::AppHandle;
+#[cfg(target_os = "linux")]
+use tauri::Manager;
 
 use crate::error::{AppError, AppResult};
 
