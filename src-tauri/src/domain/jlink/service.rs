@@ -243,24 +243,27 @@ fn scan_probes_via_bridge() -> AppResult<Vec<Probe>> {
             Ok(s) if !s.is_empty() => (Some(s), "bridge_openex"),
             Ok(_) => (discovery_fw.clone(), "discovery_only"),
             Err(e) => {
-                log::warn!(
-                    "[jlink] probe_firmware failed index={} sn={} — {} (using discovery if present)",
-                    index,
-                    serial,
-                    e
-                );
-
                 // On cold start (or right after udev install), OpenEx may fail transiently.
                 // Retry once quickly to avoid "firmware missing until refresh".
                 let msg = e.to_string();
-                if msg.contains("Cannot connect") || msg.contains("Could not read J-Link capabilities") {
+                let transient = msg.contains("Cannot connect")
+                    || msg.contains("Could not read J-Link capabilities")
+                    || msg.contains("Communication timed out");
+
+                if transient {
+                    log::debug!(
+                        "[jlink] probe_firmware transient OpenEx error index={} sn={} — {} (retrying once)",
+                        index,
+                        serial,
+                        msg
+                    );
                     std::thread::sleep(std::time::Duration::from_millis(250));
                     match try_read_fw() {
                         Ok(s) if !s.is_empty() => (Some(s), "bridge_openex_retry"),
                         Ok(_) => (discovery_fw.clone(), "discovery_only_retry"),
                         Err(e2) => {
                             log::warn!(
-                                "[jlink] probe_firmware retry failed index={} sn={} — {}",
+                                "[jlink] probe_firmware failed after retry index={} sn={} — {} (using discovery if present)",
                                 index,
                                 serial,
                                 e2
@@ -269,6 +272,12 @@ fn scan_probes_via_bridge() -> AppResult<Vec<Probe>> {
                         }
                     }
                 } else {
+                    log::warn!(
+                        "[jlink] probe_firmware failed index={} sn={} — {} (using discovery if present)",
+                        index,
+                        serial,
+                        msg
+                    );
                     (discovery_fw.clone(), "discovery_after_err")
                 }
             }

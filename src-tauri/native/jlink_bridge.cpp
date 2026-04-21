@@ -34,7 +34,7 @@ std::string g_dll_dir;
 // parse success reliably (mirrors what you see in J-Link Commander).
 thread_local std::string* g_capture = nullptr;
 
-// Match WinUSBSwitcher demo (main.cpp): stream DLL log/error to stderr so `tauri dev` shows SEGGER text.
+// Stream DLL log/error to stderr so `tauri dev` shows SEGGER text.
 static void log_cb(const char* s) {
   if (s) {
     std::fputs(s, stderr);
@@ -90,7 +90,7 @@ static bool set_current_directory_best_effort(const std::string& new_dir) {
   return false;
 }
 
-// WinUSBSwitcher main.cpp: after LoadLibrary, set process CWD + DLL search dir to the folder containing
+// After LoadLibrary, set process CWD + DLL search dir to the folder containing
 // the loaded module (so `Firmwares\\` resolves like J-Link.exe). Uses resolved `loadedPath()`, not only
 // the path string passed to Load.
 static void win32_apply_demo_runtime_dirs(const std::string& dirRaw) {
@@ -261,7 +261,7 @@ static std::vector<JLINKARM_EMU_CONNECT_INFO> fetch_probe_list(JLinkARMDLL& a, i
 static bool select_probe(JLinkARMDLL& a, int index, const std::vector<JLINKARM_EMU_CONNECT_INFO>& list) {
   if (index < 0 || index >= static_cast<int>(list.size())) return false;
   const auto& sel = list[static_cast<size_t>(index)];
-  // Same order as SEGGER WinUSBSwitcher / Main.c: SelectByIndex first; if it fails (==0), use USBSN.
+  // Selection order: SelectByIndex first; if it fails (==0), use USBSN.
   if (a.JLINKARM_EMU_SelectByIndex(static_cast<U32>(index)) != 0) {
     return true;
   }
@@ -335,7 +335,7 @@ static std::string tail_text(const std::string& s, size_t max_chars) {
   return s.substr(s.size() - max_chars);
 }
 
-// WinUSBSwitcher demo (main.cpp) never calls JLINKARM_Connect() after OpenEx; the DLL may run an
+// We never call JLINKARM_Connect() after OpenEx; the DLL may run an
 // automatic firmware update during OpenEx and stream progress via log callbacks ("Updating firmware...").
 // We capture that here. Calling Connect() before the first read can change DLL state and skip that path
 // on some builds.
@@ -538,7 +538,7 @@ char* jlink_bridge_update_firmware(int index) {
   if (!a) return nullptr;
 
 #ifdef _WIN32
-  // CWD + SetDllDirectory are set persistently in jlink_bridge_load (WinUSBSwitcher demo parity).
+  // CWD + SetDllDirectory are set persistently in jlink_bridge_load.
   ScopedCwd _cwd(g_dll_dir);
 #endif
 
@@ -616,8 +616,7 @@ char* jlink_bridge_update_firmware(int index) {
   g_capture = &cap_update;
   const U32 rc = a->JLINKARM_UpdateFirmwareIfNewer();
   g_capture = nullptr;
-  env_diag << "JLINKARM_UpdateFirmwareIfNewer rc=" << static_cast<unsigned long>(rc)
-           << " (WinUSBSwitcher demo: single UpdateFirmwareIfNewer after OpenEx)\n";
+  env_diag << "UpdateFirmwareIfNewer rc=" << static_cast<unsigned long>(rc) << "\n";
   if (!cap_update.empty()) {
     if (!out_all.empty()) out_all += "\n";
     out_all += cap_update;
@@ -654,20 +653,19 @@ char* jlink_bridge_update_firmware(int index) {
   updated = updated || (!fw_after_s.empty() && fw_after_s != fw_before_s);
 
   std::ostringstream oss;
+  // Keep detail concise and product-grade. Avoid embedding long workflow narration here.
+  // Newlines will be flattened to ` | ` by json_escape_detail_for_json().
   const std::string detail =
       env_diag.str() +
-      std::string("Index=") + std::to_string(index) +
-      "\nSerial=" + std::to_string(sel.SerialNumber) +
-      "\nProduct=" + std::string(sel.acProduct) +
-      "\nNickname=" + std::string(sel.acNickName) +
-      "\n\n[note] WinUSBSwitcher demo flow: load → set CWD/DLL dir from loadedPath → OpenEx → "
-      "GetFirmwareString → JLINKARM_UpdateFirmwareIfNewer only (no JLINKARM_Connect). "
-      "If GetSN mismatches expected_serial, wrong probe. If firmware_file_exists=no, fix bundle layout."
-      "\nBefore=" + fw_before_s +
-      "\nAfter=" + fw_after_s +
-      (out_all.empty() ? std::string()
-                       : (std::string("\n\n[DLL callback log — OpenEx + UpdateFirmwareIfNewer]\n") +
-                          tail_text(out_all, 2000)));
+      std::string("index=") + std::to_string(index) +
+      "\nexpected_sn=" + std::to_string(sel.SerialNumber) +
+      "\nproduct=" + std::string(sel.acProduct) +
+      "\nnickname=" + std::string(sel.acNickName) +
+      "\nfirmware_before=" + fw_before_s +
+      "\nfirmware_after=" + fw_after_s +
+      (out_all.empty()
+           ? std::string()
+           : (std::string("\ncallback_log_tail=") + tail_text(out_all, 1200)));
 
   oss << "{\"status\":\"" << (updated ? "updated" : "current") << "\",\"firmware\":\""
       << json_escape(fw_after_s.c_str()) << "\",\"beforeFirmware\":\""
@@ -709,7 +707,7 @@ char* jlink_bridge_switch_usb_driver(int index, int winusb) {
   // Commander-like commands (selectprobe/WebUSBEnable) are not always available via
   // JLINKARM_ExecCommand(). The config-mem method is the most reliable.
   //
-  // This matches the WinUSBSwitcher demo logic:
+  // Config-memory WinUSB toggle:
   //   read config at offset 0x8E, bit3 (0 = enabled, 1 = disabled)
   constexpr U32 CONFIG_OFF_HW_FEATURES = 0x8E;
   constexpr U8  HW_FEATURE_WINUSB_DISABLE_BIT = 3;
