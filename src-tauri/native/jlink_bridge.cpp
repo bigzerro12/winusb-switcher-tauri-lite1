@@ -686,6 +686,7 @@ char* jlink_bridge_update_firmware(int index) {
       "\npost_update_reboot_attempted=" + std::string(reboot_attempted ? "yes" : "no") +
       (reboot_attempted ? ("\npost_update_reboot_command=" + reboot_command) : std::string("\npost_update_reboot_command=")) +
       "\npost_update_reboot_not_supported=" + std::string(reboot_unsupported ? "yes" : "no") +
+      "\n" +
       std::string("index=") + std::to_string(index) +
       "\nexpected_sn=" + std::to_string(sel.SerialNumber) +
       "\nproduct=" + std::string(sel.acProduct) +
@@ -703,7 +704,7 @@ char* jlink_bridge_update_firmware(int index) {
       << (reboot_unsupported ? "true" : "false")
       << ",\"rebootAttempted\":" << (reboot_attempted ? "true" : "false")
       << ",\"rebootCommand\":\"" << json_escape(reboot_command.c_str()) << "\""
-      << ",\"sleepMs\":100"
+      << ",\"sleepMs\":" << (updated ? "100" : "0")
       << ",\"error\":\"\"}";
   return dup_str(oss.str());
 }

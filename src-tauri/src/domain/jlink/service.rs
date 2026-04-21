@@ -360,9 +360,17 @@ fn update_firmware_via_bridge(probe_index: usize) -> FirmwareUpdateResult {
                         );
                         FirmwareUpdateResult::Updated { firmware: fw }
                     }
-                    _ => FirmwareUpdateResult::Current {
-                        firmware: if fw.is_empty() { "n/a".to_string() } else { fw },
-                    },
+                    _ => {
+                        log::info!(
+                            "[jlink] Probe[{}] firmware current; post-update sleep={}ms reboot_attempted={} (skipped)",
+                            probe_index,
+                            sleep_ms,
+                            reboot_attempted
+                        );
+                        FirmwareUpdateResult::Current {
+                            firmware: if fw.is_empty() { "n/a".to_string() } else { fw },
+                        }
+                    }
                 }
             }
             Err(e) => {
