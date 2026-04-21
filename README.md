@@ -55,10 +55,8 @@ A **versioned** layout is also supported, e.g. `jlink-v936/<platform>/` (see `bu
 ## Development
 
 ```bash
-git lfs install
 git clone <repository-url>
 cd <repository-root>
-git lfs pull
 
 yarn install
 yarn tauri:dev    # Full app: Vite + Tauri (required for IPC and J-Link)
@@ -80,18 +78,11 @@ yarn tauri:build  # Release-style bundle
 
 ---
 
-## Version control and Git LFS
+## Version control (large binaries)
 
-Large artifacts under `src-tauri/resources/jlink-runtime/` and optional `jlink-bundles/` are tracked with **Git LFS** ([`.gitattributes`](.gitattributes)).
+Bundled J-Link libraries and firmware under `src-tauri/resources/jlink-runtime/` (and optional `jlink-bundles/`) are stored **in normal Git**—not Git LFS—so clones and **GitHub Actions** do not need `git lfs pull` or LFS bandwidth. [`.gitattributes`](.gitattributes) marks those paths as **`-text`** to avoid CRLF normalization corrupting binaries.
 
-```bash
-git lfs install
-git lfs pull
-```
-
-If clones contain tiny **LFS pointer** files instead of real binaries, run `git lfs pull` and rebuild.
-
-**CI:** Use `actions/checkout@v4` with `lfs: true` when workflows compile or bundle the app (see [`.github/workflows/build.yml`](.github/workflows/build.yml)). Large LFS bandwidth on hosted runners may require a paid **Git LFS** data plan or hosting binaries outside the default remote.
+The history of this repository was migrated off LFS for CI reliability. If you fork an older branch that still used LFS pointers, run `git lfs pull` on that branch only, or rebase onto `main`.
 
 ---
 
@@ -118,16 +109,16 @@ If clones contain tiny **LFS pointer** files instead of real binaries, run `git 
 .
 ├── scripts/
 │   ├── stage-jlink-for-build.mjs
-│   └── push-testing-remote.sh    # Optional: push main + LFS to another remote
+│   └── push-testing-remote.sh    # Optional: push main to a second remote
 ├── src/renderer/                 # React UI
 ├── src/shared/types.ts           # IPC contracts / shared types
 └── src-tauri/
     ├── icons/                    # Application icons
     ├── resources/
-    │   ├── jlink-runtime/        # Bundled SEGGER runtime (Git LFS)
+    │   ├── jlink-runtime/        # Bundled SEGGER runtime (~tens–hundreds of MB in Git)
     │   └── segger-99-jlink.rules
     ├── native/                   # C++ bridge (J-Link DLL / .so integration)
-    ├── jlink-bundles/            # Optional per-OS zips (Git LFS), if used
+    ├── jlink-bundles/            # Optional per-OS zips, if used
     └── src/                      # Rust: commands, domain, FFI
 ```
 
@@ -137,11 +128,11 @@ If clones contain tiny **LFS pointer** files instead of real binaries, run `git 
 
 | Symptom | What to try |
 |---------|-------------|
-| Corrupt DLL / missing firmware / invalid zip | Ensure `git lfs pull` completed; confirm `Firmwares/` sits beside the loaded library. |
+| Corrupt DLL / missing firmware / invalid zip | Confirm a full `git clone` (not a sparse checkout omitting `jlink-runtime`); verify `Firmwares/` sits beside the loaded library. |
 | Linux: permission denied on USB | Install SEGGER-compatible **udev** rules; replug probe or reload rules (`udevadm`). The app may prompt via **`pkexec`** to install rules—canceling leaves setup incomplete. |
 | Linux: wrong ELF / `.so` not found | Match app architecture to `linux-32` vs `linux-64`; check `LD_LIBRARY_PATH` and `ldd` on `JLinkExe` / bundled libs if you customize layout. |
 | “Runtime not prepared” | Call **`prepare_bundled_jlink`** from the UI bootstrap before probe operations. |
-| CI LFS errors | Increase LFS quota, mirror blobs, or adjust workflows to fetch assets from object storage. |
+| CI checkout errors | Ensure workflows use a standard `actions/checkout@v4` (no special LFS setup required for this repo). |
 
 ---
 
