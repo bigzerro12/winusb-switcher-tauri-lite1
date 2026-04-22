@@ -1,7 +1,6 @@
 #include "jlink_bridge.h"
 
-#include "bridge_state.h"
-#include "bridge_util.h"
+#include "bridge_support.h"
 #include "commander_exec.h"
 #include "runtime_dirs.h"
 
@@ -71,7 +70,7 @@ char* jlink_bridge_list_probes_json(void) {
   if (!a) return nullptr;
 
   std::vector<JLINKARM_EMU_CONNECT_INFO> list;
-  const int n = commander_exec::ExecShowEmuList(*a, list);
+  const int n = commander_exec::_ExecShowEmuList(*a, list);
   if (n < 0) {
     set_err("JLINKARM_EMU_GetList failed");
     return nullptr;
@@ -100,7 +99,7 @@ char* jlink_bridge_probe_firmware(int index) {
   if (!a) return nullptr;
 
   std::vector<JLINKARM_EMU_CONNECT_INFO> list;
-  const int n = commander_exec::ExecShowEmuList(*a, list);
+  const int n = commander_exec::_ExecShowEmuList(*a, list);
   if (n < 0) {
     set_err("JLINKARM_EMU_GetList failed");
     return nullptr;
@@ -116,18 +115,18 @@ char* jlink_bridge_probe_firmware(int index) {
 
   std::string open_cap;
   std::string open_err_s;
-  if (!commander_exec::ConnectToJLinkCapture(*a, index, list, open_cap, open_err_s)) {
+  if (!commander_exec::_ConnectToJLinkCapture(*a, index, list, open_cap, open_err_s)) {
     set_err(open_err_s);
     return nullptr;
   }
-  if (!commander_exec::EnsureSelectedUsbSn(*a, index, list, open_cap, open_err_s, /*diag=*/nullptr)) {
+  if (!commander_exec::_EnsureSelectedUsbSn(*a, index, list, open_cap, open_err_s, /*diag=*/nullptr)) {
     set_err(open_err_s);
     return nullptr;
   }
 
   char fw[512] = {};
   a->JLINKARM_GetFirmwareString(fw, static_cast<int>(sizeof(fw) - 1));
-  commander_exec::DisconnectFromJLink(*a);
+  commander_exec::_DisconnectFromJLink(*a);
 
   std::string out = bridge_util::firmware_compiled_date(fw);
   if (out.empty() && fw[0]) out = fw;
@@ -145,7 +144,7 @@ char* jlink_bridge_update_firmware(int index) {
 #endif
 
   std::vector<JLINKARM_EMU_CONNECT_INFO> list;
-  const int n = commander_exec::ExecShowEmuList(*a, list);
+  const int n = commander_exec::_ExecShowEmuList(*a, list);
   if (n < 0 || index < 0 || index >= n) {
     set_err("invalid probe list or index");
     return nullptr;
@@ -156,7 +155,7 @@ char* jlink_bridge_update_firmware(int index) {
 #ifdef _WIN32
   {
     const std::string cwd_now = runtime_dirs::get_current_directory_a();
-    const std::string bin_name = commander_exec::GuessFirmwareBinName(sel);
+    const std::string bin_name = commander_exec::_GuessFirmwareBinName(sel);
     std::string fw_path = g_dll_dir + "\\Firmwares\\" + bin_name;
     env_diag << "dll_dir=" << g_dll_dir << "\n"
              << "cwd_during_update=" << cwd_now << "\n"
@@ -167,7 +166,7 @@ char* jlink_bridge_update_firmware(int index) {
 
   std::string open_cap;
   std::string open_err_s;
-  if (!commander_exec::ConnectToJLinkCapture(*a, index, list, open_cap, open_err_s)) {
+  if (!commander_exec::_ConnectToJLinkCapture(*a, index, list, open_cap, open_err_s)) {
     set_err(open_err_s);
     return nullptr;
   }
@@ -177,27 +176,27 @@ char* jlink_bridge_update_firmware(int index) {
   std::string fw_before_s = bridge_util::firmware_compiled_date(fw_before);
   if (fw_before_s.empty() && fw_before[0]) fw_before_s = fw_before;
 
-  if (!commander_exec::EnsureSelectedUsbSn(*a, index, list, open_cap, open_err_s, &env_diag)) {
+  if (!commander_exec::_EnsureSelectedUsbSn(*a, index, list, open_cap, open_err_s, &env_diag)) {
     set_err(open_err_s);
     return nullptr;
   }
 
-  bool updated = commander_exec::CallbackLogSuggestsFirmwareActivity(open_cap);
+  bool updated = commander_exec::_CallbackLogSuggestsFirmwareActivity(open_cap);
   std::string out_all = open_cap;
 
   U32 rc = 0;
-  const std::string cap_update = commander_exec::CaptureUpdateFirmwareIfNewer(*a, &rc);
+  const std::string cap_update = commander_exec::_CaptureUpdateFirmwareIfNewer(*a, &rc);
   env_diag << "JLINKARM_UpdateFirmwareIfNewer rc=" << static_cast<unsigned long>(rc) << "\n";
   if (!cap_update.empty()) {
     if (!out_all.empty()) out_all += "\n";
     out_all += cap_update;
   }
-  updated = updated || commander_exec::CallbackLogSuggestsFirmwareActivity(cap_update);
+  updated = updated || commander_exec::_CallbackLogSuggestsFirmwareActivity(cap_update);
   updated = updated || (rc != 0);
 
   char fw[512] = {};
   a->JLINKARM_GetFirmwareString(fw, static_cast<int>(sizeof(fw) - 1));
-  commander_exec::DisconnectFromJLink(*a);
+  commander_exec::_DisconnectFromJLink(*a);
 
   std::string fw_after_s = bridge_util::firmware_compiled_date(fw);
   if (fw_after_s.empty() && fw[0]) fw_after_s = fw;
@@ -206,13 +205,13 @@ char* jlink_bridge_update_firmware(int index) {
   // If the probe rebooted mid-update, do a short reopen + re-read loop.
   if (fw_after_s == fw_before_s) {
     for (int i = 0; i < 6; ++i) {
-      commander_exec::ExecSleep(250);
+      commander_exec::_ExecSleep(250);
       std::string retry_cap;
       std::string retry_err;
-      if (!commander_exec::ConnectToJLinkCapture(*a, index, list, retry_cap, retry_err)) continue;
+      if (!commander_exec::_ConnectToJLinkCapture(*a, index, list, retry_cap, retry_err)) continue;
       char tmp[512] = {};
       a->JLINKARM_GetFirmwareString(tmp, static_cast<int>(sizeof(tmp) - 1));
-      commander_exec::DisconnectFromJLink(*a);
+      commander_exec::_DisconnectFromJLink(*a);
       std::string tmp_s = bridge_util::firmware_compiled_date(tmp);
       if (tmp_s.empty() && tmp[0]) tmp_s = tmp;
       if (!tmp_s.empty()) fw_after_s = tmp_s;
@@ -225,9 +224,9 @@ char* jlink_bridge_update_firmware(int index) {
   bool reboot_not_supported = false;
   std::string reboot_command;
   if (updated) {
-    commander_exec::ExecSleep(100);
-    const auto rr = commander_exec::ExecReboot(*a, index, list);
-    commander_exec::ExecSleep(100);
+    commander_exec::_ExecSleep(100);
+    const auto rr = commander_exec::_ExecReboot(*a, index, list);
+    commander_exec::_ExecSleep(100);
     reboot_attempted = rr.attempted;
     reboot_not_supported = rr.not_supported;
     reboot_command = rr.command;
@@ -272,7 +271,7 @@ char* jlink_bridge_switch_usb_driver(int index, int winusb) {
 #endif
 
   std::vector<JLINKARM_EMU_CONNECT_INFO> list;
-  const int n = commander_exec::ExecShowEmuList(*a, list);
+  const int n = commander_exec::_ExecShowEmuList(*a, list);
   if (n < 0 || index < 0 || index >= n) {
     set_err("invalid probe list or index");
     return bridge_util::dup_str("{\"success\":false,\"error\":\"invalid index\",\"detail\":\"\",\"rebootNotSupported\":false}");
@@ -280,8 +279,8 @@ char* jlink_bridge_switch_usb_driver(int index, int winusb) {
 
   std::string detail_for_error;
   const bool ok = winusb
-      ? commander_exec::ExecWebUSBEnable(*a, index, list, detail_for_error)
-      : commander_exec::ExecWebUSBDisable(*a, index, list, detail_for_error);
+      ? commander_exec::_ExecWebUSBEnable(*a, index, list, detail_for_error)
+      : commander_exec::_ExecWebUSBDisable(*a, index, list, detail_for_error);
   if (!ok) {
     set_err(detail_for_error.empty() ? std::string("switch config failed") : detail_for_error);
     std::ostringstream oss;
@@ -290,9 +289,9 @@ char* jlink_bridge_switch_usb_driver(int index, int winusb) {
     return bridge_util::dup_str(oss.str());
   }
 
-  commander_exec::ExecSleep(100);
-  const auto rr = commander_exec::ExecReboot(*a, index, list);
-  commander_exec::ExecSleep(100);
+  commander_exec::_ExecSleep(100);
+  const auto rr = commander_exec::_ExecReboot(*a, index, list);
+  commander_exec::_ExecSleep(100);
 
   std::ostringstream oss;
   oss << "{\"success\":true,\"error\":\"\",\"detail\":\"\",\"rebootNotSupported\":"

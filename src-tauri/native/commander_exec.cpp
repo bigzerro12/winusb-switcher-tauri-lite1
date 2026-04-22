@@ -11,6 +11,18 @@
 
 namespace commander_exec {
 
+// ---------------------------------------------------------------------------
+//  Commander-style structure
+//
+//  This file is organized to mirror the high-level flow of SEGGER's J-Link
+//  Commander Main.c, without copying its implementation:
+//    - list probes (ShowEmuList)
+//    - select a probe (SelectProbe)
+//    - connect (OpenEx)
+//    - execute an operation
+//    - disconnect (Close)
+// ---------------------------------------------------------------------------
+
 // Many J-Link commands write output via the log/error callbacks rather than the
 // `pOut` buffer of JLINKARM_ExecCommand(). Capture callback output so we can
 // parse success reliably (mirrors what you see in J-Link Commander).
@@ -36,7 +48,59 @@ static void err_cb(const char* s) {
   if (g_capture && s) g_capture->append(s);
 }
 
-int ExecShowEmuList(JLinkARMDLL& a, std::vector<JLINKARM_EMU_CONNECT_INFO>& out_list) {
+// ─── "Commander-style" internal helpers ─────────────────────────────────────
+//
+// We mirror the structure of J-Link Commander's Main.c:
+// - One-time list query (ShowEmuList / SelectProbe)
+// - Select the desired emulator from the list
+// - OpenEx (connect to J-Link, not target)
+// - Execute the operation (ExecCommand, Read/WriteEmuConfigMem, etc.)
+// - Disconnect (Close)
+
+static bool _SelectProbeFromProvidedList(JLinkARMDLL& a, int index, const std::vector<JLINKARM_EMU_CONNECT_INFO>& list, std::string& out_err) {
+  out_err.clear();
+  if (index < 0 || index >= static_cast<int>(list.size())) {
+    out_err = "invalid index";
+    return false;
+  }
+  const auto& sel = list[static_cast<size_t>(index)];
+  if (sel.Connection == JLINKARM_HOSTIF_USB) {
+    if (a.JLINKARM_EMU_SelectByUSBSN(static_cast<U32>(sel.SerialNumber)) >= 0) return true;
+  }
+  // For IP probes (or if SelectByUSBSN fails), fall back to index selection.
+  if (a.JLINKARM_EMU_SelectByIndex(static_cast<U32>(index)) != 0) return true;
+  out_err = "select probe failed";
+  return false;
+}
+
+static bool _ConnectToJLinkInternal(JLinkARMDLL& a, std::string& out_err) {
+  out_err.clear();
+  const char* open_err = a.JLINKARM_OpenEx(&log_cb, &err_cb);
+  if (open_err != nullptr) {
+    out_err = std::string("OpenEx: ") + open_err;
+    return false;
+  }
+  return true;
+}
+
+void _DisconnectFromJLink(JLinkARMDLL& a) { a.JLINKARM_Close(); }
+
+struct _SCOPED_DISCONNECT {
+  JLinkARMDLL& a;
+  bool close = false;
+  explicit _SCOPED_DISCONNECT(JLinkARMDLL& api) : a(api) {}
+  ~_SCOPED_DISCONNECT() {
+    if (close) {
+      a.JLINKARM_Close();
+    }
+  }
+};
+
+// ---------------------------------------------------------------------------
+//  List / select
+// ---------------------------------------------------------------------------
+
+int _ExecShowEmuList(JLinkARMDLL& a, std::vector<JLINKARM_EMU_CONNECT_INFO>& out_list) {
   out_list.clear();
   const int interface_mask = static_cast<int>(JLINKARM_HOSTIF_USB | JLINKARM_HOSTIF_IP);
   std::vector<JLINKARM_EMU_CONNECT_INFO> buf(64);
@@ -53,41 +117,28 @@ int ExecShowEmuList(JLinkARMDLL& a, std::vector<JLINKARM_EMU_CONNECT_INFO>& out_
   return r;
 }
 
-int ExecSelectEmuFromList(JLinkARMDLL& a, int index, std::vector<JLINKARM_EMU_CONNECT_INFO>& out_list) {
-  const int r = ExecShowEmuList(a, out_list);
+int _ExecSelectEmuFromList(JLinkARMDLL& a, int index, std::vector<JLINKARM_EMU_CONNECT_INFO>& out_list) {
+  const int r = _ExecShowEmuList(a, out_list);
   if (r < 0) return -1;
   if (index < 0 || index >= static_cast<int>(out_list.size())) return -1;
-
-  const auto& sel = out_list[static_cast<size_t>(index)];
-  if (sel.Connection == JLINKARM_HOSTIF_USB) {
-    if (a.JLINKARM_EMU_SelectByUSBSN(static_cast<U32>(sel.SerialNumber)) >= 0) return 0;
-  }
-  if (a.JLINKARM_EMU_SelectByIndex(static_cast<U32>(index)) != 0) return 0;
-  return -1;
+  std::string ignored;
+  return _SelectProbeFromProvidedList(a, index, out_list, ignored) ? 0 : -1;
 }
 
-bool ConnectToJLink(JLinkARMDLL& a, int index, const std::vector<JLINKARM_EMU_CONNECT_INFO>& list, std::string& out_err) {
+// ---------------------------------------------------------------------------
+//  Connect / disconnect
+// ---------------------------------------------------------------------------
+
+bool _ConnectToJLink(JLinkARMDLL& a, int index, const std::vector<JLINKARM_EMU_CONNECT_INFO>& list, std::string& out_err) {
   out_err.clear();
-  if (index < 0 || index >= static_cast<int>(list.size())) {
-    out_err = "invalid index";
+  if (!_SelectProbeFromProvidedList(a, index, list, out_err)) {
     return false;
   }
-  std::vector<JLINKARM_EMU_CONNECT_INFO> ignored;
-  if (ExecSelectEmuFromList(a, index, ignored) < 0) {
-    out_err = "select probe failed";
-    return false;
-  }
-  const char* open_err = a.JLINKARM_OpenEx(&log_cb, &err_cb);
-  if (open_err != nullptr) {
-    out_err = std::string("OpenEx: ") + open_err;
-    return false;
-  }
-  return true;
+
+  return _ConnectToJLinkInternal(a, out_err);
 }
 
-void DisconnectFromJLink(JLinkARMDLL& a) { a.JLINKARM_Close(); }
-
-const char* OpenExCapture(JLinkARMDLL& a, std::string& cap) {
+const char* _OpenExCapture(JLinkARMDLL& a, std::string& cap) {
   cap.clear();
   g_capture = &cap;
   const char* err = a.JLINKARM_OpenEx(&log_cb, &err_cb);
@@ -95,19 +146,14 @@ const char* OpenExCapture(JLinkARMDLL& a, std::string& cap) {
   return err;
 }
 
-bool ConnectToJLinkCapture(JLinkARMDLL& a, int index, const std::vector<JLINKARM_EMU_CONNECT_INFO>& list, std::string& out_capture, std::string& out_err) {
+bool _ConnectToJLinkCapture(JLinkARMDLL& a, int index, const std::vector<JLINKARM_EMU_CONNECT_INFO>& list, std::string& out_capture, std::string& out_err) {
   out_err.clear();
   out_capture.clear();
-  if (index < 0 || index >= static_cast<int>(list.size())) {
-    out_err = "invalid index";
+  if (!_SelectProbeFromProvidedList(a, index, list, out_err)) {
     return false;
   }
-  std::vector<JLINKARM_EMU_CONNECT_INFO> ignored;
-  if (ExecSelectEmuFromList(a, index, ignored) < 0) {
-    out_err = "select probe failed";
-    return false;
-  }
-  const char* open_err = OpenExCapture(a, out_capture);
+
+  const char* open_err = _OpenExCapture(a, out_capture);
   if (open_err != nullptr) {
     out_err = std::string("OpenEx: ") + open_err;
     return false;
@@ -115,7 +161,11 @@ bool ConnectToJLinkCapture(JLinkARMDLL& a, int index, const std::vector<JLINKARM
   return true;
 }
 
-bool EnsureSelectedUsbSn(JLinkARMDLL& a, int index, const std::vector<JLINKARM_EMU_CONNECT_INFO>& list, std::string& io_capture, std::string& out_err, std::ostringstream* diag) {
+// ---------------------------------------------------------------------------
+//  ExecCommand output capture helpers
+// ---------------------------------------------------------------------------
+
+bool _EnsureSelectedUsbSn(JLinkARMDLL& a, int index, const std::vector<JLINKARM_EMU_CONNECT_INFO>& list, std::string& io_capture, std::string& out_err, std::ostringstream* diag) {
   out_err.clear();
   if (index < 0 || index >= static_cast<int>(list.size())) {
     out_err = "invalid index";
@@ -128,13 +178,13 @@ bool EnsureSelectedUsbSn(JLinkARMDLL& a, int index, const std::vector<JLINKARM_E
   if (sn_after < 0 || static_cast<U32>(sn_after) == sel.SerialNumber) return true;
 
   if (diag) *diag << "GetSN_after_OpenEx=" << sn_after << " expected_serial=" << sel.SerialNumber << " MISMATCH\n";
-  DisconnectFromJLink(a);
+  _DisconnectFromJLink(a);
   if (a.JLINKARM_EMU_SelectByUSBSN(static_cast<U32>(sel.SerialNumber)) < 0) {
     out_err = "SelectByUSBSN failed";
     return false;
   }
   io_capture.clear();
-  const char* open_err = OpenExCapture(a, io_capture);
+  const char* open_err = _OpenExCapture(a, io_capture);
   if (open_err != nullptr) {
     out_err = std::string("OpenEx: ") + open_err;
     return false;
@@ -143,7 +193,7 @@ bool EnsureSelectedUsbSn(JLinkARMDLL& a, int index, const std::vector<JLINKARM_E
   return true;
 }
 
-std::string ExecOut(JLinkARMDLL& a, const char* cmd) {
+std::string _ExecOut(JLinkARMDLL& a, const char* cmd) {
   char out[8192] = {};
   std::string cap;
   g_capture = &cap;
@@ -161,18 +211,18 @@ std::string ExecOut(JLinkARMDLL& a, const char* cmd) {
   return s;
 }
 
-bool ContainsUnknownCommand(const std::string& s) {
+bool _ContainsUnknownCommand(const std::string& s) {
   return s.find("Unknown command") != std::string::npos || s.find("ERROR: Unknown command") != std::string::npos;
 }
 
-bool CallbackLogSuggestsFirmwareActivity(const std::string& s) {
+bool _CallbackLogSuggestsFirmwareActivity(const std::string& s) {
   return s.find("Updating firmware") != std::string::npos ||
          s.find("Replacing firmware") != std::string::npos ||
          s.find("New firmware") != std::string::npos ||
          s.find("Waiting for new firmware") != std::string::npos;
 }
 
-std::string GuessFirmwareBinName(const JLINKARM_EMU_CONNECT_INFO& e) {
+std::string _GuessFirmwareBinName(const JLINKARM_EMU_CONNECT_INFO& e) {
   const char* p = e.acProduct;
   if (!p || !p[0]) return "JLink_OB_S124.bin";
   std::string s(p);
@@ -181,7 +231,7 @@ std::string GuessFirmwareBinName(const JLINKARM_EMU_CONNECT_INFO& e) {
   return "JLink_OB_S124.bin";
 }
 
-std::string CaptureUpdateFirmwareIfNewer(JLinkARMDLL& a, U32* out_rc) {
+std::string _CaptureUpdateFirmwareIfNewer(JLinkARMDLL& a, U32* out_rc) {
   std::string cap;
   g_capture = &cap;
   const U32 rc = a.JLINKARM_UpdateFirmwareIfNewer();
@@ -190,41 +240,45 @@ std::string CaptureUpdateFirmwareIfNewer(JLinkARMDLL& a, U32* out_rc) {
   return cap;
 }
 
-void ExecSleep(unsigned ms) {
+void _ExecSleep(unsigned ms) {
   std::this_thread::sleep_for(std::chrono::milliseconds(ms));
 }
 
-RebootResult ExecReboot(JLinkARMDLL& a, int index, const std::vector<JLINKARM_EMU_CONNECT_INFO>& list) {
+// ---------------------------------------------------------------------------
+//  Commander-style "Exec" operations
+// ---------------------------------------------------------------------------
+
+RebootResult _ExecReboot(JLinkARMDLL& a, int index, const std::vector<JLINKARM_EMU_CONNECT_INFO>& list) {
   RebootResult r;
   r.attempted = true;
 
   std::string conn_err;
-  if (!ConnectToJLink(a, index, list, conn_err)) {
+  if (!_ConnectToJLink(a, index, list, conn_err)) {
     r.command.clear();
     r.not_supported = true;
     return r;
   }
 
   r.command = "ScheduleReboot";
-  std::string reboot_out = ExecOut(a, "ScheduleReboot");
-  if (ContainsUnknownCommand(reboot_out)) {
+  std::string reboot_out = _ExecOut(a, "ScheduleReboot");
+  if (_ContainsUnknownCommand(reboot_out)) {
     r.command = "reboot";
-    reboot_out = ExecOut(a, "reboot");
+    reboot_out = _ExecOut(a, "reboot");
   }
-  DisconnectFromJLink(a);
+  _DisconnectFromJLink(a);
 
   r.not_supported = reboot_out.find("Command not supported by connected probe.") != std::string::npos;
 
   if (!r.command.empty() && !r.not_supported) {
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(5000);
-    ExecSleep(500);
+    _ExecSleep(500);
     while (std::chrono::steady_clock::now() < deadline) {
       std::string tmp_err;
-      if (ConnectToJLink(a, index, list, tmp_err)) {
-        DisconnectFromJLink(a);
+      if (_ConnectToJLink(a, index, list, tmp_err)) {
+        _DisconnectFromJLink(a);
         break;
       }
-      ExecSleep(50);
+      _ExecSleep(50);
     }
   }
 
@@ -233,7 +287,9 @@ RebootResult ExecReboot(JLinkARMDLL& a, int index, const std::vector<JLINKARM_EM
 
 static bool ExecWinUSBConfig(JLinkARMDLL& a, int index, const std::vector<JLINKARM_EMU_CONNECT_INFO>& list, bool enable_winusb, std::string& out_detail_for_error) {
   out_detail_for_error.clear();
-  if (!ConnectToJLink(a, index, list, out_detail_for_error)) return false;
+  if (!_ConnectToJLink(a, index, list, out_detail_for_error)) return false;
+  _SCOPED_DISCONNECT _close(a);
+  _close.close = true;
 
   constexpr U32 CONFIG_OFF_HW_FEATURES = 0x8E;
   constexpr U8  HW_FEATURE_WINUSB_DISABLE_BIT = 3;
@@ -241,14 +297,12 @@ static bool ExecWinUSBConfig(JLinkARMDLL& a, int index, const std::vector<JLINKA
   const int cap = a.JLINKARM_EMU_HasCapEx(JLINKARM_EMU_CAP_EX_WINUSB);
   if (cap == 0) {
     out_detail_for_error = "Probe does not report WINUSB capability (JLINKARM_EMU_CAP_EX_WINUSB).";
-    DisconnectFromJLink(a);
     return false;
   }
 
   U8 cfg = 0;
   if (a.JLINKARM_ReadEmuConfigMem(&cfg, CONFIG_OFF_HW_FEATURES, 1) != 0) {
     out_detail_for_error = "ReadEmuConfigMem failed.";
-    DisconnectFromJLink(a);
     return false;
   }
 
@@ -262,19 +316,17 @@ static bool ExecWinUSBConfig(JLinkARMDLL& a, int index, const std::vector<JLINKA
   if (cfg != oldCfg) {
     if (a.JLINKARM_WriteEmuConfigMem(&cfg, CONFIG_OFF_HW_FEATURES, 1) != 0) {
       out_detail_for_error = "WriteEmuConfigMem failed.";
-      DisconnectFromJLink(a);
       return false;
     }
   }
-  DisconnectFromJLink(a);
   return true;
 }
 
-bool ExecWebUSBEnable(JLinkARMDLL& a, int index, const std::vector<JLINKARM_EMU_CONNECT_INFO>& list, std::string& out_detail_for_error) {
+bool _ExecWebUSBEnable(JLinkARMDLL& a, int index, const std::vector<JLINKARM_EMU_CONNECT_INFO>& list, std::string& out_detail_for_error) {
   return ExecWinUSBConfig(a, index, list, true, out_detail_for_error);
 }
 
-bool ExecWebUSBDisable(JLinkARMDLL& a, int index, const std::vector<JLINKARM_EMU_CONNECT_INFO>& list, std::string& out_detail_for_error) {
+bool _ExecWebUSBDisable(JLinkARMDLL& a, int index, const std::vector<JLINKARM_EMU_CONNECT_INFO>& list, std::string& out_detail_for_error) {
   return ExecWinUSBConfig(a, index, list, false, out_detail_for_error);
 }
 

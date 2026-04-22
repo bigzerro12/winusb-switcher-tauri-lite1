@@ -6,7 +6,6 @@
 use serde::Serialize;
 
 #[derive(Debug, Serialize, thiserror::Error)]
-#[allow(dead_code)]
 #[serde(tag = "kind", content = "message", rename_all = "camelCase")]
 pub enum AppError {
     /// Bundled runtime is missing / invalid / not prepared.
@@ -16,14 +15,6 @@ pub enum AppError {
     /// Native bridge (FFI) error.
     #[error("Bridge error: {0}")]
     Bridge(String),
-
-    /// Operation was cancelled by the user
-    #[error("Cancelled")]
-    Cancelled,
-
-    /// Platform-specific error (registry, PATH, etc.)
-    #[error("Platform error: {0}")]
-    Platform(String),
 
     /// I/O error
     #[error("IO error: {0}")]
@@ -48,3 +39,16 @@ impl From<tokio::task::JoinError> for AppError {
 
 /// Shorthand Result type used throughout the app
 pub type AppResult<T> = Result<T, AppError>;
+
+/// Typed error for native bridge calls (wraps string errors from `jlink_ffi`).
+#[derive(Debug, thiserror::Error)]
+pub enum BridgeError {
+    #[error("bridge call failed: {0}")]
+    Failed(String),
+}
+
+impl From<BridgeError> for AppError {
+    fn from(e: BridgeError) -> Self {
+        AppError::Bridge(e.to_string())
+    }
+}

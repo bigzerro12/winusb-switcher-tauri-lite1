@@ -1,32 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
+import { prepareBundledJlink } from "./api/commands";
+import { BootstrapError, BootstrapPending, ProbeAccessPending } from "./features/bootstrap/screens";
+import { resizeHeightToContent } from "./lib/windowSizing";
 import { useProbeStore } from "./store/probeStore";
-import Dashboard from "./pages/Dashboard";
-import { COMMANDS } from "@shared/types";
-
-const BODY_PADDING = 24; // 12px top + 12px bottom (matches body padding in styles.css)
-
-const isLinux = () => navigator.userAgent.toLowerCase().includes("linux");
-
-// Resize only the window HEIGHT to fit content; preserves whatever width the user has set.
-async function resizeHeightToContent() {
-  await new Promise<void>((r) => setTimeout(r, 80)); // wait one paint for DOM to settle
-  const card =
-    document.querySelector<HTMLElement>(".app-card") ??
-    document.querySelector<HTMLElement>(".message-card") ??
-    document.querySelector<HTMLElement>(".bootstrap-lite-card");
-  if (!card) return;
-  const targetHeight = card.scrollHeight + BODY_PADDING;
-  try {
-    const win = getCurrentWindow();
-    const [physicalSize, scale] = await Promise.all([win.outerSize(), win.scaleFactor()]);
-    const currentLogicalWidth = Math.round(physicalSize.width / scale);
-    await win.setSize(new LogicalSize(currentLogicalWidth, targetHeight));
-  } catch (e) {
-    console.error("[App] window resize failed:", e);
-  }
-}
+import Dashboard from "./features/probes/Dashboard";
 
 export default function App() {
   const { isInstalled, isLoading, isFirmwareRefreshing, checkInstallation } = useProbeStore();
@@ -37,7 +14,7 @@ export default function App() {
     setBootstrap("pending");
     setBootstrapError("");
     try {
-      await invoke<string>(COMMANDS.PREPARE_BUNDLED_JLINK);
+      await prepareBundledJlink();
       setBootstrap("ok");
     } catch (err) {
       setBootstrap("error");
@@ -61,101 +38,15 @@ export default function App() {
   }, [bootstrap, isInstalled]);
 
   if (bootstrap === "pending") {
-    return (
-      <div className="container">
-        <div className="app-card flex items-center justify-center">
-          <div className="w-full max-w-[520px] px-6 py-10">
-            <h1 className="text-center text-base font-semibold tracking-tight text-slate-800">
-              Initializing WinUSB Switcher Lite
-            </h1>
-            <p className="mt-3 text-center text-[13px] leading-relaxed text-slate-600">
-              Preparing the bundled J-Link runtime and probe access. This usually completes in under a minute.
-            </p>
-            <p className="mt-5 text-center text-xs text-slate-500">
-              {isLinux()
-                ? "Administrator authorization may be requested to complete setup."
-                : "Please keep this window open."}
-            </p>
-            <div className="mt-8 h-1 overflow-hidden rounded-full bg-slate-100" role="progressbar" aria-label="Setup in progress">
-              <div className="bootstrap-lite-progress h-full w-2/5 rounded-full bg-slate-500/85" />
-            </div>
-            <style>{`
-              .bootstrap-lite-progress {
-                animation: bootstrapLiteShimmer 1.35s ease-in-out infinite;
-              }
-              @keyframes bootstrapLiteShimmer {
-                0% { transform: translateX(-120%); }
-                100% { transform: translateX(320%); }
-              }
-            `}</style>
-          </div>
-        </div>
-      </div>
-    );
+    return <BootstrapPending />;
   }
 
   if (bootstrap === "error") {
-    return (
-      <div className="container">
-        <div className="app-card flex items-center justify-center">
-          <div className="w-full max-w-[520px] px-6 py-10">
-            <h1 className="text-center text-[15px] font-semibold tracking-tight text-red-900">
-              Setup could not finish
-            </h1>
-            <p className="mt-3 text-center text-[13px] leading-relaxed text-red-800/90 break-words">
-              {bootstrapError}
-            </p>
-            <div className="mt-8 flex justify-center">
-              <button type="button" className="btn btn-primary" onClick={() => void runBootstrap()}>
-                Try again
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+    return <BootstrapError error={bootstrapError} onRetry={() => void runBootstrap()} />;
   }
 
   if (isInstalled === null) {
-    const primary =
-      isLoading ? "Scanning connected probes…" : "Checking J-Link runtime…";
-    const secondary = isFirmwareRefreshing
-      ? "Reading probe firmware details. Some probes may take a few seconds to respond after first launch or after permissions changes."
-      : "This can take longer on first launch or if multiple probes are connected.";
-    return (
-      <div className="container">
-        <div className="app-card flex items-center justify-center">
-          <div className="w-full max-w-[560px] px-6 py-10">
-            <h1 className="text-center text-base font-semibold tracking-tight text-slate-800">
-              Preparing probe access
-            </h1>
-            <p className="mt-3 text-center text-[13px] leading-relaxed text-slate-600">
-              {primary}
-            </p>
-            <p className="mt-3 text-center text-xs leading-relaxed text-slate-500">
-              {secondary}
-            </p>
-            <p className="mt-5 text-center text-xs text-slate-500">
-              {isLinux()
-                ? "On Linux, device permissions (udev rules) may be installed on first run and you may be prompted for administrator authorization."
-                : "Please keep this window open while setup completes."}
-            </p>
-            <div className="mt-8 h-1 overflow-hidden rounded-full bg-slate-100" role="progressbar" aria-label="Probe setup in progress">
-              <div className="bootstrap-lite-progress h-full w-2/5 rounded-full bg-slate-500/85" />
-            </div>
-            <style>{`
-              .bootstrap-lite-progress {
-                animation: bootstrapLiteShimmer 1.35s ease-in-out infinite;
-              }
-              @keyframes bootstrapLiteShimmer {
-                0% { transform: translateX(-120%); }
-                100% { transform: translateX(320%); }
-              }
-            `}</style>
-          </div>
-        </div>
-      </div>
-    );
+    return <ProbeAccessPending isLoading={isLoading} isFirmwareRefreshing={isFirmwareRefreshing} />;
   }
 
   return <Dashboard />;

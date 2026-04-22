@@ -26,8 +26,6 @@ export type InstallStatus = {
 export type AppErrorKind =
   | "runtime"
   | "bridge"
-  | "cancelled"
-  | "platform"
   | "io"
   | "internal";
 
@@ -91,6 +89,7 @@ export const COMMANDS = {
   PREPARE_BUNDLED_JLINK: "prepare_bundled_jlink",
   DETECT_AND_SCAN: "detect_and_scan",
   SCAN_PROBES: "scan_probes",
+  /** Payload: `{ probeIndex, mode, provider? }` */
   SWITCH_USB_DRIVER: "switch_usb_driver",
   GET_ARCH_INFO: "get_arch_info",
   GET_JLINK_DIAGNOSTICS: "get_jlink_diagnostics",

@@ -2,7 +2,7 @@
 
 use std::sync::Mutex;
 
-use crate::domain::probe_backend::ActiveRuntime;
+use crate::domain::probe::ActiveRuntime;
 
 /// Application state: the prepared SEGGER runtime (bridge-loaded) and related metadata.
 pub struct AppState {

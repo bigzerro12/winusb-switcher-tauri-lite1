@@ -1,12 +1,14 @@
 import { create } from "zustand";
-import { invoke } from "@tauri-apps/api/core";
+import {
+  detectAndScan,
+  scanProbes,
+  switchUsbDriver as invokeSwitchUsbDriver,
+} from "../api/commands";
 import {
   Probe,
-  InstallStatus,
   UsbDriverMode,
   UsbDriverResult,
   DriverType,
-  COMMANDS,
 } from "@shared/types";
 
 function applyDriverOverrides(
@@ -70,10 +72,7 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
   checkInstallation: async () => {
     set({ isLoading: true, error: null });
     try {
-      const result = await invoke<{
-        status: InstallStatus;
-        probes: Probe[];
-      }>(COMMANDS.DETECT_AND_SCAN);
+      const result = await detectAndScan();
 
       const overrides = get().driverOverrides;
       const probes = applyDriverOverrides(result.probes, overrides);
@@ -100,10 +99,7 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
         for (const delayMs of [600, 1400, 2600]) {
           await new Promise((r) => setTimeout(r, delayMs));
           try {
-            const cur = applyDriverOverrides(
-              await invoke<Probe[]>(COMMANDS.SCAN_PROBES),
-              overrides2
-            );
+            const cur = applyDriverOverrides(await scanProbes(), overrides2);
             const selectedProbeId2 = preserveSelection(cur, selectedBefore);
             set({ probes: cur, selectedProbeId: selectedProbeId2 });
             if (cur.every((p) => !!p.firmware)) break;
@@ -130,7 +126,7 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
     });
     try {
       const overrides = get().driverOverrides;
-      const probes = applyDriverOverrides(await invoke<Probe[]>(COMMANDS.SCAN_PROBES), overrides);
+      const probes = applyDriverOverrides(await scanProbes(), overrides);
       const selectedProbeId = preserveSelection(probes, get().selectedProbeId);
       set({ probes, selectedProbeId, isLoading: false });
     } catch (err) {
@@ -144,7 +140,7 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
   scanProbesSilent: async () => {
     try {
       const overrides = get().driverOverrides;
-      const probes = applyDriverOverrides(await invoke<Probe[]>(COMMANDS.SCAN_PROBES), overrides);
+      const probes = applyDriverOverrides(await scanProbes(), overrides);
       const selectedProbeId = preserveSelection(probes, get().selectedProbeId);
       set({ probes, selectedProbeId });
     } catch { /* ignore */ }
@@ -168,7 +164,13 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
     });
 
     try {
-      const result = await invoke<UsbDriverResult>(COMMANDS.SWITCH_USB_DRIVER, { probeIndex, mode });
+      const probe = get().probes[probeIndex];
+      const result = await invokeSwitchUsbDriver(
+        probeIndex,
+        mode,
+        probe?.provider,
+        probe?.serialNumber,
+      );
 
       if (!result.success) {
         set({
@@ -180,11 +182,11 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
 
       const probes = get().probes;
       const expectedCount = probes.length; // after reboot, transient scans can be incomplete
-      const probe = probes[probeIndex];
-      if (probe) {
+      const probeRow = probes[probeIndex];
+      if (probeRow) {
         const newDriver: DriverType = mode === "winUsb" ? "WinUSB" : "SEGGER";
         set({
-          driverOverrides: { ...get().driverOverrides, [probe.id]: newDriver },
+          driverOverrides: { ...get().driverOverrides, [probeRow.id]: newDriver },
           probes: probes.map((p, i) => (i === probeIndex ? { ...p, driver: newDriver } : p)),
         });
       }
@@ -202,10 +204,7 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
       const deadline = Date.now() + 8000;
       while (Date.now() < deadline) {
         try {
-          const cur = applyDriverOverrides(
-            await invoke<Probe[]>(COMMANDS.SCAN_PROBES),
-            overrides
-          );
+          const cur = applyDriverOverrides(await scanProbes(), overrides);
           // Only update if we are not shrinking the list.
           if (cur.length >= best.length) {
             best = cur;

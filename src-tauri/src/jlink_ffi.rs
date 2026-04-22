@@ -151,3 +151,32 @@ pub fn dll_version_string() -> Option<String> {
 pub fn last_native_error() -> String {
     String::new()
 }
+
+/// Thin adapter over raw FFI helpers so domain code can depend on `BridgeError` instead of `String`.
+pub mod bridge {
+    use crate::error::BridgeError;
+
+    pub fn is_loaded() -> bool {
+        super::bridge_is_loaded()
+    }
+
+    pub fn last_error() -> String {
+        super::last_native_error()
+    }
+
+    pub fn list_probes_json() -> Result<String, BridgeError> {
+        super::list_probes_json().map_err(BridgeError::Failed)
+    }
+
+    pub fn probe_firmware(index: usize) -> Result<String, BridgeError> {
+        super::probe_firmware(index).map_err(BridgeError::Failed)
+    }
+
+    pub fn update_firmware_json(index: usize) -> Result<String, BridgeError> {
+        super::update_firmware_json(index).map_err(BridgeError::Failed)
+    }
+
+    pub fn switch_usb_json(index: usize, winusb: bool) -> Result<String, BridgeError> {
+        super::switch_usb_json(index, winusb).map_err(BridgeError::Failed)
+    }
+}

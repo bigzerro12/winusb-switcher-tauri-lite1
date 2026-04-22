@@ -1,20 +1,21 @@
 //! Domain service for J-Link operations.
 //!
-//! This is the only place `commands/` should call into for J-Link behavior.
+//! Tauri commands should use `crate::domain::probe`; this module is the J-Link backend
+//! implementation behind `ProbeBackend`.
 
 use crate::domain::jlink::types::{
     FirmwareUpdateResult, InstallStatus, Probe, ProbeProvider, UsbDriverMode, UsbDriverResult,
 };
-use crate::domain::probe_backend::ProbeBackend;
-use crate::error::{AppError, AppResult};
-use crate::infra::jlink_backend::bridge;
+use crate::domain::probe::ProbeBackend;
+use crate::error::{AppError, AppResult, BridgeError};
+use crate::jlink_ffi::bridge;
 use crate::infra::runtime::bundled::JLinkRuntime;
 
 pub struct JLinkService;
 
 impl JLinkService {
     /// Support / diagnostics snapshot for `get_jlink_diagnostics` (and tooling).
-    pub fn diagnostics_json(runtime: Option<&JLinkRuntime>) -> serde_json::Value {
+    fn diagnostics_json(runtime: Option<&JLinkRuntime>) -> serde_json::Value {
         let bridge_loaded = bridge::is_loaded();
         let env_dll = std::env::var(crate::bundled_jlink::WINUSB_JLINK_DLL_PATH_ENV).ok();
         let target_os = std::env::consts::OS;
@@ -76,7 +77,7 @@ impl JLinkService {
         }
     }
 
-    pub fn ensure_ready(runtime: Option<&JLinkRuntime>) -> AppResult<&JLinkRuntime> {
+    fn ensure_ready(runtime: Option<&JLinkRuntime>) -> AppResult<&JLinkRuntime> {
         runtime.ok_or_else(|| {
             AppError::Runtime("Runtime not prepared. Call prepare_bundled_jlink first.".to_string())
         })
@@ -92,7 +93,7 @@ impl JLinkService {
         }
     }
 
-    pub fn detect(runtime: Option<&JLinkRuntime>) -> InstallStatus {
+    fn detect(runtime: Option<&JLinkRuntime>) -> InstallStatus {
         if let Some(rt) = runtime {
             let ui_version = rt
                 .version
@@ -121,7 +122,7 @@ impl JLinkService {
         }
     }
 
-    pub fn scan_probes(_rt: &JLinkRuntime) -> AppResult<Vec<Probe>> {
+    fn scan_probes(_rt: &JLinkRuntime) -> AppResult<Vec<Probe>> {
         log::debug!("[jlink] scan_probes: start");
         Self::ensure_bridge_loaded()?;
         let probes = scan_probes_via_bridge()?;
@@ -129,7 +130,7 @@ impl JLinkService {
         Ok(probes)
     }
 
-    pub fn switch_usb_driver(
+    fn switch_usb_driver(
         _rt: &JLinkRuntime,
         probe_index: usize,
         mode: UsbDriverMode,
@@ -168,7 +169,7 @@ impl JLinkService {
         Ok(switch_usb_via_bridge(probe_index, mode))
     }
 
-    pub fn update_firmware_only(_rt: &JLinkRuntime, probe_index: usize) -> AppResult<FirmwareUpdateResult> {
+    fn update_firmware_only(_rt: &JLinkRuntime, probe_index: usize) -> AppResult<FirmwareUpdateResult> {
         log::debug!("[jlink] update_firmware_only: probe[{}]", probe_index);
         Self::ensure_bridge_loaded()?;
         Ok(update_firmware_via_bridge(probe_index))
@@ -201,6 +202,31 @@ impl ProbeBackend for JLinkService {
 
     fn switch_usb_driver(rt: &Self::Runtime, probe_index: usize, mode: UsbDriverMode) -> AppResult<UsbDriverResult> {
         Self::switch_usb_driver(rt, probe_index, mode)
+    }
+}
+
+impl JLinkService {
+    /// Resolve the current bridge index for a probe by serial number.
+    ///
+    /// Indices can reorder during reboot/re-enumeration; serial numbers remain stable.
+    pub fn resolve_probe_index_by_serial(serial_number: &str) -> AppResult<usize> {
+        use serde_json::Value;
+
+        let json = bridge::list_probes_json().map_err(AppError::from)?;
+        let rows: Vec<Value> =
+            serde_json::from_str(&json).map_err(|e| AppError::Internal(e.to_string()))?;
+
+        for row in rows {
+            let sn = row["serialNumber"].as_str().unwrap_or("");
+            if sn == serial_number {
+                return Ok(row["index"].as_u64().unwrap_or(0) as usize);
+            }
+        }
+
+        Err(AppError::Bridge(format!(
+            "Probe not found (serialNumber={})",
+            serial_number
+        )))
     }
 }
 
@@ -271,9 +297,7 @@ fn scan_probes_via_bridge() -> AppResult<Vec<Probe>> {
 
         let t0 = std::time::Instant::now();
 
-        let try_read_fw = || -> Result<String, crate::infra::jlink_backend::errors::BridgeError> {
-            bridge::probe_firmware(index)
-        };
+        let try_read_fw = || -> Result<String, BridgeError> { bridge::probe_firmware(index) };
 
         let (firmware, fw_src): (Option<String>, &'static str) = match try_read_fw() {
             Ok(s) if !s.is_empty() => (Some(s), "bridge_openex"),
