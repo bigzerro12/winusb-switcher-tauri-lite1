@@ -173,6 +173,13 @@ jobs:
     steps:
       - name: Install OS packages
         run: |
+          # Some 32-bit base images ship with only "main" enabled; Tauri build deps live in "universe".
+          printf '%s\n' \
+            'deb http://archive.ubuntu.com/ubuntu jammy universe' \
+            'deb http://archive.ubuntu.com/ubuntu jammy-updates universe' \
+            'deb http://archive.ubuntu.com/ubuntu jammy-backports universe' \
+            'deb http://archive.ubuntu.com/ubuntu jammy-security universe' \
+            >> /etc/apt/sources.list
           apt-get update
           apt-get install -y --no-install-recommends \
             git ca-certificates curl xz-utils \
