@@ -129,21 +129,58 @@ int _ExecSelectEmuFromList(JLinkARMDLL& a, int index, std::vector<JLINKARM_EMU_C
 //  Connect / disconnect
 // ---------------------------------------------------------------------------
 
-bool _ConnectToJLink(JLinkARMDLL& a, int index, const std::vector<JLINKARM_EMU_CONNECT_INFO>& list, std::string& out_err) {
+static bool _ApplyPreOpenExec(JLinkARMDLL& a, int index, const std::vector<JLINKARM_EMU_CONNECT_INFO>& list, const char* exec_cmd, std::string* io_capture) {
+  if (!exec_cmd || !exec_cmd[0]) return true;
+  std::string exec_err;
+  const std::string exec_out = _ExecExecCommand(a, index, list, exec_cmd, exec_err);
+  if (io_capture && !exec_out.empty()) {
+    io_capture->append(exec_out);
+    if (!io_capture->empty() && io_capture->back() != '\n') io_capture->push_back('\n');
+  }
+  // Intentionally ignore exec_err here: the connect can still succeed even if this exec isn't supported.
+  return true;
+}
+
+static bool _ConnectToJLinkWithPreOpenExec(
+    JLinkARMDLL& a,
+    int index,
+    const std::vector<JLINKARM_EMU_CONNECT_INFO>& list,
+    const char* pre_open_exec,
+    std::string& out_err
+) {
   out_err.clear();
   if (!_SelectProbeFromProvidedList(a, index, list, out_err)) {
     return false;
   }
-
-  // Disable the J-Link default "auto firmware update on connect" behavior.
-  // Do this *after* selecting the probe but *before* OpenEx, consistent with Commander.
-  {
-    std::string exec_err;
-    (void)_ExecExecCommand(a, index, list, "DisableAutoUpdateFW", exec_err);
-    // Don't fail the connection if the DLL doesn't recognize the exec; OpenEx will still work.
-  }
-
+  _ApplyPreOpenExec(a, index, list, pre_open_exec, /*io_capture=*/nullptr);
   return _ConnectToJLinkInternal(a, out_err);
+}
+
+static bool _ConnectToJLinkCaptureWithPreOpenExec(
+    JLinkARMDLL& a,
+    int index,
+    const std::vector<JLINKARM_EMU_CONNECT_INFO>& list,
+    const char* pre_open_exec,
+    std::string& out_capture,
+    std::string& out_err
+) {
+  out_err.clear();
+  out_capture.clear();
+  if (!_SelectProbeFromProvidedList(a, index, list, out_err)) {
+    return false;
+  }
+  _ApplyPreOpenExec(a, index, list, pre_open_exec, &out_capture);
+
+  const char* open_err = _OpenExCapture(a, out_capture);
+  if (open_err != nullptr) {
+    out_err = std::string("OpenEx: ") + open_err;
+    return false;
+  }
+  return true;
+}
+
+bool _ConnectToJLink(JLinkARMDLL& a, int index, const std::vector<JLINKARM_EMU_CONNECT_INFO>& list, std::string& out_err) {
+  return _ConnectToJLinkWithPreOpenExec(a, index, list, "DisableAutoUpdateFW", out_err);
 }
 
 const char* _OpenExCapture(JLinkARMDLL& a, std::string& cap) {
@@ -155,29 +192,7 @@ const char* _OpenExCapture(JLinkARMDLL& a, std::string& cap) {
 }
 
 bool _ConnectToJLinkCapture(JLinkARMDLL& a, int index, const std::vector<JLINKARM_EMU_CONNECT_INFO>& list, std::string& out_capture, std::string& out_err) {
-  out_err.clear();
-  out_capture.clear();
-  if (!_SelectProbeFromProvidedList(a, index, list, out_err)) {
-    return false;
-  }
-
-  // Disable the default auto-update behavior before opening the J-Link connection.
-  // Capture any output into `out_capture` for support logs.
-  {
-    std::string exec_err;
-    const std::string exec_out = _ExecExecCommand(a, index, list, "DisableAutoUpdateFW", exec_err);
-    if (!exec_out.empty()) {
-      out_capture += exec_out;
-      if (!out_capture.empty() && out_capture.back() != '\n') out_capture.push_back('\n');
-    }
-  }
-
-  const char* open_err = _OpenExCapture(a, out_capture);
-  if (open_err != nullptr) {
-    out_err = std::string("OpenEx: ") + open_err;
-    return false;
-  }
-  return true;
+  return _ConnectToJLinkCaptureWithPreOpenExec(a, index, list, "DisableAutoUpdateFW", out_capture, out_err);
 }
 
 // ---------------------------------------------------------------------------
@@ -382,10 +397,33 @@ RebootResult _ExecReboot(JLinkARMDLL& a, int index, const std::vector<JLINKARM_E
 
 static bool ExecWinUSBConfig(JLinkARMDLL& a, int index, const std::vector<JLINKARM_EMU_CONNECT_INFO>& list, bool enable_winusb, std::string& out_detail_for_error) {
   out_detail_for_error.clear();
-  if (!_ConnectToJLink(a, index, list, out_detail_for_error)) return false;
+
+  // For WinUSB switching we want Commander-like behavior:
+  // - exec EnableAutoUpdateFW
+  // - SelectProbe/OpenEx (which may auto-update firmware on connect)
+  // - WebUSBEnable/WebUSBDisable
+  // - sleep 100, reboot, sleep 100
+  std::string conn_err;
+  if (!_ConnectToJLinkWithPreOpenExec(a, index, list, "EnableAutoUpdateFW", conn_err)) {
+    out_detail_for_error = conn_err;
+    return false;
+  }
   _SCOPED_DISCONNECT _close(a);
   _close.close = true;
 
+  // Prefer the Commander command path first.
+  const char* cmd = enable_winusb ? "WebUSBEnable" : "WebUSBDisable";
+  std::string cmd_out = _ExecOut(a, cmd);
+  const bool cmd_unknown = _ContainsUnknownCommand(cmd_out);
+  if (!cmd_unknown) {
+    // If the command printed an explicit failure, surface it.
+    if (cmd_out.find("ERROR") != std::string::npos || cmd_out.find("Error") != std::string::npos) {
+      out_detail_for_error = cmd_out;
+      return false;
+    }
+  }
+
+  if (cmd_unknown) {
   constexpr U32 CONFIG_OFF_HW_FEATURES = 0x8E;
   constexpr U8  HW_FEATURE_WINUSB_DISABLE_BIT = 3;
 
@@ -414,6 +452,16 @@ static bool ExecWinUSBConfig(JLinkARMDLL& a, int index, const std::vector<JLINKA
       return false;
     }
   }
+  } // fallback path
+
+  _ExecSleep(100);
+  // ScheduleReboot is preferred but older firmwares only understand `reboot`.
+  std::string reboot_out = _ExecOut(a, "ScheduleReboot");
+  if (_ContainsUnknownCommand(reboot_out)) {
+    reboot_out = _ExecOut(a, "reboot");
+  }
+  _ExecSleep(100);
+
   return true;
 }
 
