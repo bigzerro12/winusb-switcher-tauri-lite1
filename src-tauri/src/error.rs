@@ -52,3 +52,16 @@ impl From<BridgeError> for AppError {
         AppError::Bridge(e.to_string())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::AppError;
+
+    #[test]
+    fn app_error_serializes_with_kind_and_message() {
+        let err = AppError::Runtime("Runtime not prepared".to_string());
+        let v = serde_json::to_value(err).expect("AppError should serialize");
+        assert_eq!(v["kind"], "runtime");
+        assert_eq!(v["message"], "Runtime not prepared");
+    }
+}

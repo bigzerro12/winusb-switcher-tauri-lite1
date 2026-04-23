@@ -1,4 +1,4 @@
-#include "JLinkARMDLL_Wrapper.h"
+#include "jlink/JLinkARMDLL_Wrapper.h"
 
 #include <cstdio>
 

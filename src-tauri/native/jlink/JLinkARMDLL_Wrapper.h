@@ -2,8 +2,8 @@
 
 #include <string>
 
-#include "Pal.h"
-// Official SEGGER SDK headers (copied into this folder)
+#include "common/Pal.h"
+// Official SEGGER SDK headers (vendored under native/jlink/)
 #include "JLINKARM_Const.h"
 #include "JLinkARMDLL.h"
 

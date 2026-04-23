@@ -117,7 +117,7 @@ The history of this repository was migrated off LFS for CI reliability. If you f
     ├── resources/
     │   ├── jlink-runtime/        # Bundled SEGGER runtime (~tens–hundreds of MB in Git)
     │   └── segger-99-jlink.rules
-    ├── native/                   # C++ bridge (J-Link DLL / .so integration)
+    ├── native/                   # C++: `common/` (shared PAL, JSON helpers, CWD) + `jlink/` (SEGGER bridge)
     ├── jlink-bundles/            # Optional per-OS zips, if used
     └── src/                      # Rust: commands, domain, FFI
 ```

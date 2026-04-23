@@ -1,5 +1,4 @@
-import React from "react";
-import { Probe, DriverType } from "@shared/types";
+import type { Probe, DriverType } from "@shared/types";
 import { useProbeStore } from "../../store/probeStore";
 
 function ProbeTable(props: {
@@ -98,9 +97,8 @@ export default function Dashboard() {
   const handleRefresh = () => scanProbes();
 
   const handleSwitchToWinUSB = async () => {
-    if (!selectedProbeId) return;
-    const idx = probes.findIndex((p) => p.id === selectedProbeId);
-    if (idx !== -1) await switchUsbDriver(idx, "winUsb");
+    if (!selectedProbe) return;
+    await switchUsbDriver(selectedProbe.id, "winUsb");
   };
 
   return (

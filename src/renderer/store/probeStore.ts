@@ -4,12 +4,8 @@ import {
   scanProbes,
   switchUsbDriver as invokeSwitchUsbDriver,
 } from "../api/commands";
-import {
-  Probe,
-  UsbDriverMode,
-  UsbDriverResult,
-  DriverType,
-} from "@shared/types";
+import { normalizeTauriError } from "../api/errors";
+import type { Probe, UsbDriverMode, DriverType } from "@shared/types";
 
 function applyDriverOverrides(
   probes: Probe[],
@@ -53,7 +49,7 @@ interface ProbeState {
   scanProbesSilent: () => Promise<void>;
   scanProbes: () => Promise<void>;
   selectProbe: (id: string | null) => void;
-  switchUsbDriver: (probeIndex: number, mode: UsbDriverMode) => Promise<void>;
+  switchUsbDriver: (probeId: string, mode: UsbDriverMode) => Promise<void>;
 }
 
 export const useProbeStore = create<ProbeState>((set, get) => ({
@@ -112,7 +108,7 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
     } catch (err) {
       set({
         isInstalled: false,
-        error: err instanceof Error ? err.message : String(err),
+        error: normalizeTauriError(err),
         isLoading: false,
       });
     }
@@ -131,7 +127,7 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
       set({ probes, selectedProbeId, isLoading: false });
     } catch (err) {
       set({
-        error: err instanceof Error ? err.message : String(err),
+        error: normalizeTauriError(err),
         isLoading: false,
       });
     }
@@ -154,7 +150,7 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
     });
   },
 
-  switchUsbDriver: async (probeIndex, mode) => {
+  switchUsbDriver: async (probeId, mode) => {
     set({
       usbDriverStatus: "switching",
       usbDriverMessage: mode === "winUsb"
@@ -164,7 +160,16 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
     });
 
     try {
-      const probe = get().probes[probeIndex];
+      const currentProbes = get().probes;
+      const probeIndex = currentProbes.findIndex((p) => p.id === probeId);
+      if (probeIndex === -1) {
+        set({
+          usbDriverStatus: "failed",
+          usbDriverMessage: "Selected probe was not found. Please refresh and try again.",
+        });
+        return;
+      }
+      const probe = currentProbes[probeIndex];
       const result = await invokeSwitchUsbDriver(
         probeIndex,
         mode,
@@ -182,12 +187,12 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
 
       const probes = get().probes;
       const expectedCount = probes.length; // after reboot, transient scans can be incomplete
-      const probeRow = probes[probeIndex];
+      const probeRow = probes.find((p) => p.id === probeId);
       if (probeRow) {
         const newDriver: DriverType = mode === "winUsb" ? "WinUSB" : "SEGGER";
         set({
           driverOverrides: { ...get().driverOverrides, [probeRow.id]: newDriver },
-          probes: probes.map((p, i) => (i === probeIndex ? { ...p, driver: newDriver } : p)),
+          probes: probes.map((p) => (p.id === probeId ? { ...p, driver: newDriver } : p)),
         });
       }
 
@@ -235,7 +240,7 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
     } catch (err) {
       set({
         usbDriverStatus: "failed",
-        usbDriverMessage: err instanceof Error ? err.message : String(err),
+        usbDriverMessage: normalizeTauriError(err),
       });
     }
   },

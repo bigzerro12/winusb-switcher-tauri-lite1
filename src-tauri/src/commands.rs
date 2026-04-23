@@ -24,7 +24,10 @@ pub const WINUSB_JLINK_DLL_OVERRIDE_ENV: &str = "WINUSB_JLINK_DLL_OVERRIDE";
 /// - Windows: load bundled SEGGER DLL (`JLink_x64.dll` for 64-bit builds).
 /// - Linux: load bundled `libjlinkarm.so` directly via the native bridge (no extraction/installer).
 #[tauri::command]
-pub async fn prepare_bundled_jlink(app: AppHandle, state: State<'_, AppState>) -> Result<String, String> {
+pub async fn prepare_bundled_jlink(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<String, AppError> {
     let app_clone = app.clone();
 
     #[cfg(target_os = "windows")]
@@ -42,11 +45,11 @@ pub async fn prepare_bundled_jlink(app: AppHandle, state: State<'_, AppState>) -
             Ok(Ok(rt)) => rt,
             Ok(Err(e)) => {
                 log::warn!("[cmd] prepare_bundled_jlink failed: {}", e);
-                return Err(e.to_string());
+                return Err(e);
             }
             Err(e) => {
                 log::warn!("[cmd] prepare_bundled_jlink task join error: {}", e);
-                return Err(e.to_string());
+                return Err(AppError::Internal(e.to_string()));
             }
         };
 
@@ -72,11 +75,11 @@ pub async fn prepare_bundled_jlink(app: AppHandle, state: State<'_, AppState>) -
                 Ok(Ok(rt)) => rt,
                 Ok(Err(e)) => {
                     log::warn!("[cmd] prepare_bundled_jlink failed: {}", e);
-                    return Err(e.to_string());
+                    return Err(e);
                 }
                 Err(e) => {
                     log::warn!("[cmd] prepare_bundled_jlink task join error: {}", e);
-                    return Err(e.to_string());
+                    return Err(AppError::Internal(e.to_string()));
                 }
             };
 
@@ -92,7 +95,9 @@ pub async fn prepare_bundled_jlink(app: AppHandle, state: State<'_, AppState>) -
         #[cfg(not(target_os = "linux"))]
         {
             log::warn!("[cmd] prepare_bundled_jlink: unsupported OS");
-            Err("Bundled J-Link runtime is not implemented for this OS yet".to_string())
+            Err(AppError::Runtime(
+                "Bundled J-Link runtime is not implemented for this OS yet".to_string(),
+            ))
         }
     }
 }
@@ -243,5 +248,39 @@ pub fn get_jlink_diagnostics(state: State<'_, AppState>) -> serde_json::Value {
     log::trace!("[cmd] get_jlink_diagnostics");
     let rt = state.get_runtime();
     probe::diagnostics_json(rt.as_ref())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SwitchUsbRequest;
+    use crate::domain::jlink::types::{ProbeProvider, UsbDriverMode};
+
+    #[test]
+    fn switch_usb_request_defaults_provider_when_omitted() {
+        let v = serde_json::json!({
+            "probeIndex": 3,
+            "mode": "winUsb"
+        });
+        let req: SwitchUsbRequest = serde_json::from_value(v).expect("request must deserialize");
+        assert_eq!(req.probe_index, 3);
+        assert_eq!(req.mode, UsbDriverMode::WinUsb);
+        assert_eq!(req.provider, ProbeProvider::JLink);
+        assert!(req.serial_number.is_none());
+    }
+
+    #[test]
+    fn switch_usb_request_accepts_serial_and_provider() {
+        let v = serde_json::json!({
+            "probeIndex": 1,
+            "mode": "segger",
+            "provider": "JLink",
+            "serialNumber": "123456789"
+        });
+        let req: SwitchUsbRequest = serde_json::from_value(v).expect("request must deserialize");
+        assert_eq!(req.probe_index, 1);
+        assert_eq!(req.mode, UsbDriverMode::Segger);
+        assert_eq!(req.provider, ProbeProvider::JLink);
+        assert_eq!(req.serial_number.as_deref(), Some("123456789"));
+    }
 }
 

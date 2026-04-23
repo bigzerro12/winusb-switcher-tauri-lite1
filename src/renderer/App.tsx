@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { prepareBundledJlink } from "./api/commands";
+import { normalizeTauriError, withPlatformSetupHint } from "./api/errors";
 import { BootstrapError, BootstrapPending, ProbeAccessPending } from "./features/bootstrap/screens";
 import { resizeHeightToContent } from "./lib/windowSizing";
 import { useProbeStore } from "./store/probeStore";
@@ -18,7 +19,7 @@ export default function App() {
       setBootstrap("ok");
     } catch (err) {
       setBootstrap("error");
-      setBootstrapError(err instanceof Error ? err.message : String(err));
+      setBootstrapError(withPlatformSetupHint(normalizeTauriError(err)));
     }
   }, []);
 

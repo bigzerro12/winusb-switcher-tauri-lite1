@@ -32,4 +32,3 @@ bool file_exists_a(const std::string& path);
 #endif
 
 } // namespace runtime_dirs
-

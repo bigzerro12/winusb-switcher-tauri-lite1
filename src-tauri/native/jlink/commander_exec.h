@@ -1,6 +1,6 @@
 #pragma once
 
-#include "JLinkARMDLL_Wrapper.h"
+#include "jlink/JLinkARMDLL_Wrapper.h"
 
 #include <sstream>
 #include <string>

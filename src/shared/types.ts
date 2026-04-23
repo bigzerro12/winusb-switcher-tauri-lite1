@@ -74,6 +74,12 @@ export type UsbDriverResult = {
   rebootNotSupported?: boolean;
 };
 
+/** Combined result of the `detect_and_scan` IPC command. */
+export type DetectAndScanResult = {
+  status: InstallStatus;
+  probes: Probe[];
+};
+
 /** Returned by the `get_arch_info` command. Values match `std::env::consts` on the Rust side. */
 export type ArchInfo = {
   /** e.g. "windows" | "macos" | "linux" */
@@ -89,7 +95,7 @@ export const COMMANDS = {
   PREPARE_BUNDLED_JLINK: "prepare_bundled_jlink",
   DETECT_AND_SCAN: "detect_and_scan",
   SCAN_PROBES: "scan_probes",
-  /** Payload: `{ probeIndex, mode, provider? }` */
+  /** Payload: `{ probeIndex, mode, provider?, serialNumber? }` */
   SWITCH_USB_DRIVER: "switch_usb_driver",
   GET_ARCH_INFO: "get_arch_info",
   GET_JLINK_DIAGNOSTICS: "get_jlink_diagnostics",

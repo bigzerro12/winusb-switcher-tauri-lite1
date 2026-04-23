@@ -375,142 +375,89 @@ fn update_firmware_via_bridge(probe_index: usize) -> FirmwareUpdateResult {
     );
 
     match bridge::update_firmware_json(probe_index) {
-        Ok(s) => match serde_json::from_str::<serde_json::Value>(&s) {
-            Ok(v) => {
-                let reboot_attempted = v["rebootAttempted"].as_bool().unwrap_or(false);
-                let reboot_not_supported = v["rebootNotSupported"].as_bool().unwrap_or(false);
-                let reboot_command = v["rebootCommand"].as_str().unwrap_or("");
-                let sleep_ms = v["sleepMs"].as_u64().unwrap_or(0);
-
-                if let Some(detail) = v["detail"].as_str() {
-                    if !detail.trim().is_empty() {
-                        // Can be multi-line and noisy; keep at debug by default.
-                        log::debug!("[jlink][bridge] firmware update detail:\n{}", detail);
-                    }
-                }
-                let status = v["status"].as_str().unwrap_or("");
-                let fw = v["firmware"].as_str().unwrap_or("").to_string();
-                match status {
-                    "failed" => {
-                        let msg = v["error"]
-                            .as_str()
-                            .unwrap_or("firmware update failed")
-                            .to_string();
-                        log::warn!(
-                            "[jlink][bridge] firmware update reported failed (probe[{}]): {}",
-                            probe_index,
-                            msg
-                        );
-                        FirmwareUpdateResult::Failed { error: msg }
-                    }
-                    "updated" => {
-                        log::info!(
-                            "[jlink] Probe[{}] firmware updated; post-update sleep={}ms reboot_attempted={} reboot_cmd={} reboot_not_supported={}",
-                            probe_index,
-                            sleep_ms,
-                            reboot_attempted,
-                            if reboot_command.is_empty() { "(none)" } else { reboot_command },
-                            reboot_not_supported
-                        );
-                        FirmwareUpdateResult::Updated { firmware: fw }
-                    }
-                    _ => {
-                        log::info!(
-                            "[jlink] Probe[{}] firmware current; post-update sleep={}ms reboot_attempted={} (skipped)",
-                            probe_index,
-                            sleep_ms,
-                            reboot_attempted
-                        );
-                        FirmwareUpdateResult::Current {
-                            firmware: if fw.is_empty() { "n/a".to_string() } else { fw },
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                log::warn!(
-                    "[jlink][bridge] firmware update response is not valid JSON: {}",
-                    e
-                );
-                FirmwareUpdateResult::Failed {
-                    error: e.to_string(),
-                }
-            }
-        },
+        Ok(raw) => parse_firmware_update_response(probe_index, &raw),
         Err(e) => {
             log::warn!("[jlink][bridge] update_firmware_json failed: {}", e);
             FirmwareUpdateResult::Failed {
                 error: e.to_string(),
             }
-        },
+        }
+    }
+}
+
+/// Pure JSON-to-domain mapper for the bridge's `update_firmware` response.
+///
+/// Separated from the bridge call so it can be unit-tested with canned payloads.
+fn parse_firmware_update_response(probe_index: usize, raw: &str) -> FirmwareUpdateResult {
+    let v: serde_json::Value = match serde_json::from_str(raw) {
+        Ok(v) => v,
+        Err(e) => {
+            log::warn!(
+                "[jlink][bridge] firmware update response is not valid JSON: {}",
+                e
+            );
+            return FirmwareUpdateResult::Failed {
+                error: e.to_string(),
+            };
+        }
+    };
+
+    let reboot_attempted = v["rebootAttempted"].as_bool().unwrap_or(false);
+    let reboot_not_supported = v["rebootNotSupported"].as_bool().unwrap_or(false);
+    let reboot_command = v["rebootCommand"].as_str().unwrap_or("");
+    let sleep_ms = v["sleepMs"].as_u64().unwrap_or(0);
+
+    if let Some(detail) = v["detail"].as_str() {
+        if !detail.trim().is_empty() {
+            log::debug!("[jlink][bridge] firmware update detail:\n{}", detail);
+        }
+    }
+
+    let status = v["status"].as_str().unwrap_or("");
+    let fw = v["firmware"].as_str().unwrap_or("").to_string();
+
+    match status {
+        "failed" => {
+            let msg = v["error"]
+                .as_str()
+                .unwrap_or("firmware update failed")
+                .to_string();
+            log::warn!(
+                "[jlink][bridge] firmware update reported failed (probe[{}]): {}",
+                probe_index,
+                msg
+            );
+            FirmwareUpdateResult::Failed { error: msg }
+        }
+        "updated" => {
+            log::info!(
+                "[jlink] Probe[{}] firmware updated; post-update sleep={}ms reboot_attempted={} reboot_cmd={} reboot_not_supported={}",
+                probe_index,
+                sleep_ms,
+                reboot_attempted,
+                if reboot_command.is_empty() { "(none)" } else { reboot_command },
+                reboot_not_supported
+            );
+            FirmwareUpdateResult::Updated { firmware: fw }
+        }
+        _ => {
+            log::info!(
+                "[jlink] Probe[{}] firmware current; post-update sleep={}ms reboot_attempted={} (skipped)",
+                probe_index,
+                sleep_ms,
+                reboot_attempted
+            );
+            FirmwareUpdateResult::Current {
+                firmware: if fw.is_empty() { "n/a".to_string() } else { fw },
+            }
+        }
     }
 }
 
 fn switch_usb_via_bridge(probe_index: usize, mode: UsbDriverMode) -> UsbDriverResult {
     let winusb = matches!(mode, UsbDriverMode::WinUsb);
     match bridge::switch_usb_json(probe_index, winusb) {
-        Ok(s) => match serde_json::from_str::<serde_json::Value>(&s) {
-            Ok(v) => {
-                let success = v["success"].as_bool().unwrap_or(false);
-                let reboot_attempted = v["rebootAttempted"].as_bool().unwrap_or(false);
-                let reboot_not_supported = v["rebootNotSupported"].as_bool().unwrap_or(false);
-                let reboot_command = v["rebootCommand"].as_str().unwrap_or("");
-                let _sleep_ms = v["sleepMs"].as_u64().unwrap_or(0);
-
-                if !success {
-                    let detail = v["detail"].as_str().unwrap_or("");
-                    if !detail.trim().is_empty() {
-                        log::warn!("[jlink][bridge] switch failed. detail:\n{}", detail);
-                    } else {
-                        log::warn!(
-                            "[jlink][bridge] switch failed. detail empty; lastNativeError:\n{}",
-                            bridge::last_error()
-                        );
-                    }
-                } else {
-                    let cmd = if reboot_command.is_empty() {
-                        "(none)"
-                    } else {
-                        reboot_command
-                    };
-                    log::info!(
-                        "[jlink] switch_usb_driver probe[{}] ok; post-switch: Sleep(100) -> Reboot({}) -> Sleep(100) (attempted={}, not_supported={})",
-                        probe_index,
-                        cmd,
-                        reboot_attempted,
-                        reboot_not_supported
-                    );
-                }
-                UsbDriverResult {
-                    success,
-                    error: v["error"]
-                        .as_str()
-                        .filter(|e| !e.is_empty())
-                        .map(|e| e.to_string()),
-                    detail: v["detail"]
-                        .as_str()
-                        .filter(|e| !e.is_empty())
-                        .map(|e| e.to_string()),
-                    reboot_not_supported,
-                }
-            }
-            Err(e) => {
-                log::warn!(
-                    "[jlink][bridge] switch_usb response is not valid JSON: {}",
-                    e
-                );
-                UsbDriverResult {
-                    success: false,
-                    error: Some(format!(
-                        "{}\n\n(native detail)\n{}",
-                        e,
-                        bridge::last_error()
-                    )),
-                    detail: Some(bridge::last_error()),
-                    reboot_not_supported: false,
-                }
-            }
-        },
+        Ok(raw) => parse_switch_usb_response(probe_index, &raw),
         Err(e) => {
             log::warn!("[jlink][bridge] switch_usb_json failed: {}", e);
             UsbDriverResult {
@@ -523,7 +470,224 @@ fn switch_usb_via_bridge(probe_index: usize, mode: UsbDriverMode) -> UsbDriverRe
                 detail: Some(bridge::last_error()),
                 reboot_not_supported: false,
             }
-        },
+        }
+    }
+}
+
+/// Pure JSON-to-domain mapper for the bridge's `switch_usb_driver` response.
+///
+/// Separated from the bridge call so it can be unit-tested with canned payloads.
+fn parse_switch_usb_response(probe_index: usize, raw: &str) -> UsbDriverResult {
+    let v: serde_json::Value = match serde_json::from_str(raw) {
+        Ok(v) => v,
+        Err(e) => {
+            log::warn!(
+                "[jlink][bridge] switch_usb response is not valid JSON: {}",
+                e
+            );
+            return UsbDriverResult {
+                success: false,
+                error: Some(format!(
+                    "{}\n\n(native detail)\n{}",
+                    e,
+                    bridge::last_error()
+                )),
+                detail: Some(bridge::last_error()),
+                reboot_not_supported: false,
+            };
+        }
+    };
+
+    let success = v["success"].as_bool().unwrap_or(false);
+    let reboot_attempted = v["rebootAttempted"].as_bool().unwrap_or(false);
+    let reboot_not_supported = v["rebootNotSupported"].as_bool().unwrap_or(false);
+    let reboot_command = v["rebootCommand"].as_str().unwrap_or("");
+
+    if !success {
+        let detail = v["detail"].as_str().unwrap_or("");
+        if !detail.trim().is_empty() {
+            log::warn!("[jlink][bridge] switch failed. detail:\n{}", detail);
+        } else {
+            log::warn!(
+                "[jlink][bridge] switch failed. detail empty; lastNativeError:\n{}",
+                bridge::last_error()
+            );
+        }
+    } else {
+        let cmd = if reboot_command.is_empty() {
+            "(none)"
+        } else {
+            reboot_command
+        };
+        log::info!(
+            "[jlink] switch_usb_driver probe[{}] ok; post-switch: Sleep(100) -> Reboot({}) -> Sleep(100) (attempted={}, not_supported={})",
+            probe_index,
+            cmd,
+            reboot_attempted,
+            reboot_not_supported
+        );
+    }
+
+    UsbDriverResult {
+        success,
+        error: v["error"]
+            .as_str()
+            .filter(|e| !e.is_empty())
+            .map(|e| e.to_string()),
+        detail: v["detail"]
+            .as_str()
+            .filter(|e| !e.is_empty())
+            .map(|e| e.to_string()),
+        reboot_not_supported,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        parse_discovery_firmware_string, parse_firmware_update_response,
+        parse_switch_usb_response, JLinkService,
+    };
+    use crate::domain::jlink::types::FirmwareUpdateResult;
+
+    // ─── Version + firmware string helpers ───────────────────────────────
+
+    #[test]
+    fn format_version_for_ui_parses_build_numbers() {
+        assert_eq!(
+            JLinkService::format_version_for_ui("SEGGER J-Link DLL (build 93600)").as_deref(),
+            Some("V9.36")
+        );
+        assert_eq!(
+            JLinkService::format_version_for_ui("SEGGER J-Link DLL (build 105200)").as_deref(),
+            Some("V10.52")
+        );
+        assert_eq!(
+            JLinkService::format_version_for_ui("SEGGER J-Link DLL (build 105201)").as_deref(),
+            Some("V10.52.1")
+        );
+    }
+
+    #[test]
+    fn parse_discovery_firmware_string_extracts_compiled_date() {
+        let s = "J-Link OB-STM32F072-128K V2 compiled Sep 29 2020 12:34:56\r\n";
+        assert_eq!(
+            parse_discovery_firmware_string(s),
+            "Sep 29 2020 12:34:56".to_string()
+        );
+    }
+
+    #[test]
+    fn parse_discovery_firmware_string_passes_through_when_no_compiled_marker() {
+        assert_eq!(
+            parse_discovery_firmware_string("FW 1.2.3"),
+            "FW 1.2.3".to_string()
+        );
+        assert_eq!(parse_discovery_firmware_string("   "), "".to_string());
+    }
+
+    // ─── Firmware update response parser ─────────────────────────────────
+
+    #[test]
+    fn firmware_update_response_updated_status_returns_updated() {
+        let raw = r#"{
+            "status": "updated",
+            "firmware": "Sep 29 2020",
+            "detail": "",
+            "rebootAttempted": true,
+            "rebootNotSupported": false,
+            "rebootCommand": "rnh",
+            "sleepMs": 100
+        }"#;
+        match parse_firmware_update_response(0, raw) {
+            FirmwareUpdateResult::Updated { firmware } => {
+                assert_eq!(firmware, "Sep 29 2020");
+            }
+            other => panic!("expected Updated, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn firmware_update_response_current_status_uses_fallback_when_firmware_missing() {
+        let raw = r#"{
+            "status": "current",
+            "firmware": "",
+            "rebootAttempted": false,
+            "sleepMs": 0
+        }"#;
+        match parse_firmware_update_response(1, raw) {
+            FirmwareUpdateResult::Current { firmware } => {
+                assert_eq!(firmware, "n/a");
+            }
+            other => panic!("expected Current, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn firmware_update_response_failed_status_surfaces_error() {
+        let raw = r#"{
+            "status": "failed",
+            "firmware": "",
+            "error": "OpenEx timeout"
+        }"#;
+        match parse_firmware_update_response(2, raw) {
+            FirmwareUpdateResult::Failed { error } => {
+                assert_eq!(error, "OpenEx timeout");
+            }
+            other => panic!("expected Failed, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn firmware_update_response_invalid_json_reports_failed() {
+        match parse_firmware_update_response(0, "not json") {
+            FirmwareUpdateResult::Failed { error } => {
+                assert!(!error.is_empty());
+            }
+            other => panic!("expected Failed, got {:?}", other),
+        }
+    }
+
+    // ─── Switch USB response parser ──────────────────────────────────────
+
+    #[test]
+    fn switch_usb_response_success_normalizes_empty_strings_to_none() {
+        let raw = r#"{
+            "success": true,
+            "error": "",
+            "detail": "",
+            "rebootAttempted": true,
+            "rebootNotSupported": false,
+            "rebootCommand": "rnh",
+            "sleepMs": 100
+        }"#;
+        let r = parse_switch_usb_response(0, raw);
+        assert!(r.success);
+        assert!(r.error.is_none());
+        assert!(r.detail.is_none());
+        assert!(!r.reboot_not_supported);
+    }
+
+    #[test]
+    fn switch_usb_response_failure_preserves_detail_and_flags() {
+        let raw = r#"{
+            "success": false,
+            "error": "Failed to switch probe config.",
+            "detail": "could not write config word",
+            "rebootNotSupported": true
+        }"#;
+        let r = parse_switch_usb_response(0, raw);
+        assert!(!r.success);
+        assert_eq!(r.error.as_deref(), Some("Failed to switch probe config."));
+        assert_eq!(r.detail.as_deref(), Some("could not write config word"));
+        assert!(r.reboot_not_supported);
+    }
+
+    #[test]
+    fn switch_usb_response_invalid_json_returns_failure_with_error_context() {
+        let r = parse_switch_usb_response(0, "not json");
+        assert!(!r.success);
+        assert!(r.error.is_some());
     }
 }
 

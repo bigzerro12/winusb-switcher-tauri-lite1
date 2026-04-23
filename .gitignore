@@ -7,6 +7,10 @@ node_modules/
 out/
 dist/
 
+# ── Rust / Tauri ──────────────────────────────────────────────────────────────
+src-tauri/target/
+src-tauri/tauri.conf.autogen.json
+
 # ── Electron-builder cache ────────────────────────────────────────────────────
 .cache/
 buildResources/

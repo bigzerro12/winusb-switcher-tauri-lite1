@@ -1,8 +1,9 @@
-#include "jlink_bridge.h"
+#include "jlink/jlink_bridge.h"
 
-#include "bridge_support.h"
-#include "commander_exec.h"
-#include "runtime_dirs.h"
+#include "jlink/bridge_state.h"
+#include "jlink/commander_exec.h"
+#include "common/bridge_util.h"
+#include "common/runtime_dirs.h"
 
 #include <cstdlib>
 #include <sstream>

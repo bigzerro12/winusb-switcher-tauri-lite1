@@ -1,4 +1,4 @@
-#include "runtime_dirs.h"
+#include "common/runtime_dirs.h"
 
 #ifdef _WIN32
 #  define WIN32_LEAN_AND_MEAN
@@ -98,4 +98,3 @@ bool file_exists_a(const std::string& path) {
 #endif
 
 } // namespace runtime_dirs
-
