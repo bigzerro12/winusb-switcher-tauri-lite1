@@ -364,13 +364,14 @@ table {
 }
 
 .driver-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(160px, 1fr));
+  display: flex;
+  justify-content: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .driver-actions .btn {
-  width: 100%;
+  width: min(360px, 100%);
   min-height: 30px;
   display: flex;
   align-items: center;
@@ -463,7 +464,7 @@ table {
   }
 
   .driver-actions {
-    grid-template-columns: 1fr;
+    justify-content: center;
   }
 }
 
