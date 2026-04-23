@@ -93,7 +93,7 @@ The history of this repository was migrated off LFS for CI reliability. If you f
 | Workflow | Purpose |
 |----------|---------|
 | [`ci.yml`](.github/workflows/ci.yml) | Frontend **`yarn lint`** and **`yarn build`**; Rust `clippy`, tests, and release build on Ubuntu and Windows. Triggers on pushes/PRs to `main`, `master`, and `winusb-switcher-tauri-lite1`. |
-| [`build.yml`](.github/workflows/build.yml) | Multi-platform installers; pushing a **`v*`** tag runs the matrix and the **release** job (creates a GitHub Release and uploads Windows **x64 + x86**, Linux **x64 + x86**, macOS universal `.dmg`/`.app`, and `.deb`/`.AppImage` when builds succeed). Manual **workflow_dispatch** also supported. |
+| [`build.yml`](.github/workflows/build.yml) | Multi-platform installers; pushing a **`v*`** tag runs the matrix and the **release** job (Windows **x64 + x86**, Linux **x86_64** `.deb`/`.AppImage`, macOS universal `.dmg`/`.app`). **Linux x86 (32-bit)** is not built on GitHub-hosted runners (no `libayatana-appindicator3-dev` i386; Node LTS has no official linux-ia32 builds). Use `yarn tauri:build -- --target i686-unknown-linux-gnu` on a suitable machine if you need `linux-32` artifacts; [`stage-jlink-runtime-for-bundle.mjs`](scripts/stage-jlink-runtime-for-bundle.mjs) still stages the right tree. |
 
 **Release checklist (maintainers):**
 

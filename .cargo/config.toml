@@ -1,3 +1,3 @@
-# 32-bit Linux userland from an amd64 GitHub runner (multilib / -m32 link).
+# Optional: local or self-hosted i686-unknown-linux-gnu builds (not used in GitHub Actions).
 [target.i686-unknown-linux-gnu]
 rustflags = ["-C", "link-arg=-m32"]

@@ -89,17 +89,15 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  # Linux x86 (i686) is not built here: Ubuntu does not ship libayatana-appindicator3-dev:i386,
+  # and current Node.js LTS has no official linux-ia32 binaries, so the Vite + tauri build
+  # cannot run in an i386 container. Staging still supports linux-32 for local/native builds.
   build-linux:
     runs-on: ubuntu-22.04
-    strategy:
-      fail-fast: false
-      matrix:
-        target: [x86_64-unknown-linux-gnu, i686-unknown-linux-gnu]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Linux dependencies (amd64)
-        if: matrix.target == 'x86_64-unknown-linux-gnu'
+      - name: Install Linux dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -109,57 +107,31 @@ jobs:
             patchelf \
             libssl-dev
 
-      - name: Install Linux dependencies (i686 via multiarch)
-        if: matrix.target == 'i686-unknown-linux-gnu'
-        run: |
-          sudo dpkg --add-architecture i386
-          sudo apt-get update
-          sudo apt-get install -y \
-            gcc-multilib \
-            g++-multilib \
-            libc6-dev-i386 \
-            pkg-config \
-            libwebkit2gtk-4.1-dev:i386 \
-            libayatana-appindicator3-dev:i386 \
-            librsvg2-dev:i386 \
-            patchelf \
-            libssl-dev:i386
-
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: yarn
 
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
 
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ./src-tauri
-          sharedKey: linux-${{ matrix.target }}
+          sharedKey: linux-x86_64
 
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Build & package (Linux ${{ matrix.target }})
-        env:
-          PKG_CONFIG: /usr/bin/pkg-config
-          PKG_CONFIG_PATH: /usr/lib/i386-linux-gnu/pkgconfig
-        if: matrix.target == 'i686-unknown-linux-gnu'
-        run: yarn tauri:build -- --target ${{ matrix.target }} --bundles deb,appimage
-
-      - name: Build & package (Linux ${{ matrix.target }})
-        if: matrix.target == 'x86_64-unknown-linux-gnu'
-        run: yarn tauri:build -- --target ${{ matrix.target }} --bundles deb,appimage
+      - name: Build & package (Linux x86_64)
+        run: yarn tauri:build -- --bundles deb,appimage
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: bundle-linux-${{ matrix.target }}
+          name: bundle-linux-x86_64-unknown-linux-gnu
           path: |
-            src-tauri/target/${{ matrix.target }}/release/bundle/deb/
-            src-tauri/target/${{ matrix.target }}/release/bundle/appimage/
+            src-tauri/target/release/bundle/deb/
+            src-tauri/target/release/bundle/appimage/
           if-no-files-found: warn
           retention-days: 14
 
