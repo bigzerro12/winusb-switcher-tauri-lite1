@@ -134,6 +134,38 @@ char* jlink_bridge_probe_firmware(int index) {
   return bridge_util::dup_str(out);
 }
 
+char* jlink_bridge_exec_command(int index, const char* exec_cmd_utf8) {
+  std::lock_guard<std::mutex> lock(g_mu);
+  g_err.clear();
+  JLinkARMDLL* a = api_or_set_err();
+  if (!a) return nullptr;
+
+  std::vector<JLINKARM_EMU_CONNECT_INFO> list;
+  const int n = commander_exec::_ExecShowEmuList(*a, list);
+  if (n < 0) {
+    set_err("JLINKARM_EMU_GetList failed");
+    return nullptr;
+  }
+  if (index < 0 || index >= n) {
+    set_err("probe index out of range");
+    return nullptr;
+  }
+
+#ifdef _WIN32
+  // Keep the same working-directory behavior as other bridge operations so
+  // firmware / config files resolve consistently (even though exec varies).
+  runtime_dirs::ScopedCwd _cwd_probe(g_dll_dir);
+#endif
+
+  std::string err;
+  const std::string out = commander_exec::_ExecExecCommand(*a, index, list, exec_cmd_utf8, err);
+  if (!err.empty()) {
+    set_err(err);
+    return nullptr;
+  }
+  return bridge_util::dup_str(out);
+}
+
 char* jlink_bridge_update_firmware(int index) {
   std::lock_guard<std::mutex> lock(g_mu);
   g_err.clear();

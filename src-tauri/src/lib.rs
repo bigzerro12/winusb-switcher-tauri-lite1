@@ -31,6 +31,7 @@ pub fn run() {
             commands::prepare_bundled_jlink,
             commands::detect_and_scan,
             commands::scan_probes,
+            commands::jlink_exec_command,
             commands::switch_usb_driver,
             commands::get_arch_info,
             commands::get_jlink_diagnostics,

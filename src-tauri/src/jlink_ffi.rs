@@ -20,6 +20,7 @@ unsafe extern "C" {
     fn jlink_bridge_free_string(s: *mut c_char);
     fn jlink_bridge_list_probes_json() -> *mut c_char;
     fn jlink_bridge_probe_firmware(index: i32) -> *mut c_char;
+    fn jlink_bridge_exec_command(index: i32, exec_cmd_utf8: *const c_char) -> *mut c_char;
     fn jlink_bridge_update_firmware(index: i32) -> *mut c_char;
     fn jlink_bridge_switch_usb_driver(index: i32, winusb: i32) -> *mut c_char;
     fn jlink_bridge_dll_version_string() -> *mut c_char;
@@ -87,6 +88,15 @@ pub fn list_probes_json() -> Result<String, String> {
 pub fn probe_firmware(index: usize) -> Result<String, String> {
     unsafe {
         let p = jlink_bridge_probe_firmware(index as i32);
+        take_c_str(p).ok_or_else(|| c_err_msg())
+    }
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+pub fn exec_command(index: usize, exec_cmd: &str) -> Result<String, String> {
+    let s = CString::new(exec_cmd).map_err(|e| e.to_string())?;
+    unsafe {
+        let p = jlink_bridge_exec_command(index as i32, s.as_ptr());
         take_c_str(p).ok_or_else(|| c_err_msg())
     }
 }
@@ -175,6 +185,10 @@ pub mod bridge {
 
     pub fn probe_firmware(index: usize) -> Result<String, BridgeError> {
         super::probe_firmware(index).map_err(BridgeError::Failed)
+    }
+
+    pub fn exec_command(index: usize, cmd: &str) -> Result<String, BridgeError> {
+        super::exec_command(index, cmd).map_err(BridgeError::Failed)
     }
 
     pub fn update_firmware_json(index: usize) -> Result<String, BridgeError> {

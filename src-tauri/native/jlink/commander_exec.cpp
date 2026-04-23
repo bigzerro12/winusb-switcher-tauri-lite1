@@ -240,6 +240,36 @@ bool _CallbackLogSuggestsFirmwareActivity(const std::string& s) {
          s.find("Waiting for new firmware") != std::string::npos;
 }
 
+static const char* _EatWhite(const char* s) {
+  if (!s) return "";
+  while (*s == ' ' || *s == '\t' || *s == '\r' || *s == '\n') ++s;
+  return s;
+}
+
+static std::string _ExtractExecCommandToken(const char* s) {
+  s = _EatWhite(s);
+  std::string cmd;
+  cmd.reserve(64);
+  for (;;) {
+    const char c = *s;
+    if (!c) break;
+    const bool is_letter = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+    if (!is_letter) break;
+    cmd.push_back(c);
+    ++s;
+    if (cmd.size() >= 256) break;
+  }
+  return cmd;
+}
+
+static bool _ExecNeedsConnect(const std::string& cmd_token) {
+  // Commander asks the DLL via JLINK_IFUNC_EXEC_GET_INFO to learn SetBeforeOpen/SetAfterOpen.
+  // This project doesn't expose that interface, so we hardcode known "before open" toggles.
+  if (cmd_token == "DisableAutoUpdateFW") return false;
+  if (cmd_token == "EnableAutoUpdateFW") return false;
+  return true;
+}
+
 std::string _GuessFirmwareBinName(const JLINKARM_EMU_CONNECT_INFO& e) {
   const char* p = e.acProduct;
   if (!p || !p[0]) return "JLink_OB_S124.bin";
@@ -256,6 +286,52 @@ void _ExecSleep(unsigned ms) {
 // ---------------------------------------------------------------------------
 //  Commander-style "Exec" operations
 // ---------------------------------------------------------------------------
+
+std::string _ExecExecCommand(
+    JLinkARMDLL& a,
+    int index,
+    const std::vector<JLINKARM_EMU_CONNECT_INFO>& list,
+    const char* exec_cmd,
+    std::string& out_err
+) {
+  out_err.clear();
+  if (!exec_cmd) exec_cmd = "";
+
+  const std::string token = _ExtractExecCommandToken(exec_cmd);
+  const bool need_connect = _ExecNeedsConnect(token);
+
+  // If the exec requires a J-Link connection, ensure we have one.
+  // We don't track connection state in this module; GetSN() returns <0 when not connected.
+  std::string open_cap;
+  if (need_connect) {
+    const int sn = a.JLINKARM_GetSN();
+    if (sn < 0) {
+      if (!_ConnectToJLinkCapture(a, index, list, open_cap, out_err)) {
+        return open_cap;
+      }
+    }
+  }
+
+  char out[4000] = {};
+  std::string exec_cap;
+  g_capture = &exec_cap;
+  const int rc = a.JLINKARM_ExecCommand(exec_cmd, out, static_cast<int>(sizeof(out) - 1));
+  g_capture = nullptr;
+
+  std::string s(out);
+  if (!exec_cap.empty()) {
+    if (!s.empty() && s.back() != '\n') s.push_back('\n');
+    s += exec_cap;
+  }
+  if (!open_cap.empty()) {
+    if (!s.empty() && s.back() != '\n') s.push_back('\n');
+    s += open_cap;
+  }
+  if (rc != 0) {
+    s = std::string("[ExecCommand rc=") + std::to_string(rc) + "] " + s;
+  }
+  return s;
+}
 
 RebootResult _ExecReboot(JLinkARMDLL& a, int index, const std::vector<JLINKARM_EMU_CONNECT_INFO>& list) {
   RebootResult r;

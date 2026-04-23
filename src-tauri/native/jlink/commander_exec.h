@@ -36,5 +36,17 @@ bool _CallbackLogSuggestsFirmwareActivity(const std::string& s);
 bool _ContainsUnknownCommand(const std::string& s);
 std::string _GuessFirmwareBinName(const JLINKARM_EMU_CONNECT_INFO& e);
 
+// Commander-style `exec <Command>` helper:
+// - Extracts the command token (letters only) for routing decisions.
+// - Ensures a J-Link connection when needed (OpenEx capture path).
+// - Runs JLINKARM_ExecCommand and returns stdout + captured callback text.
+std::string _ExecExecCommand(
+    JLinkARMDLL& a,
+    int index,
+    const std::vector<JLINKARM_EMU_CONNECT_INFO>& list,
+    const char* exec_cmd,
+    std::string& out_err
+);
+
 } // namespace commander_exec
 

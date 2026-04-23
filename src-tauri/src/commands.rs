@@ -171,6 +171,30 @@ pub async fn scan_probes(state: State<'_, AppState>) -> Result<Vec<Probe>, AppEr
     Ok(probes)
 }
 
+/// Execute a J-Link Commander-style `exec <Command>` string against a probe index.
+/// Returns combined stdout + captured callback output.
+#[tauri::command]
+pub async fn jlink_exec_command(
+    probe_index: usize,
+    exec_cmd: String,
+    state: State<'_, AppState>,
+) -> Result<String, AppError> {
+    let _rt = state.get_runtime();
+    // We rely on "bridge loaded" invariant established by prepare_bundled_jlink.
+    let out = tokio::task::spawn_blocking(move || -> AppResult<String> {
+        if !crate::jlink_ffi::bridge::is_loaded() {
+            return Err(AppError::Bridge(
+                "Native bridge not loaded. Call prepare_bundled_jlink first.".to_string(),
+            ));
+        }
+        crate::jlink_ffi::bridge::exec_command(probe_index, &exec_cmd).map_err(AppError::from)
+    })
+    .await
+    .map_err(|e| AppError::Internal(e.to_string()))??;
+
+    Ok(out)
+}
+
 /// Switch USB driver. Payload: `{ probeIndex, mode, provider? }` (camelCase).
 /// `provider` defaults to J-Link when omitted.
 #[tauri::command]

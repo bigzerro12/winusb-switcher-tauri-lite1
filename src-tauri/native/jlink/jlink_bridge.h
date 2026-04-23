@@ -29,6 +29,10 @@ char* jlink_bridge_list_probes_json(void);
 /// OpenEx + GetFirmwareString for one list index. USB: selects by serial first.
 char* jlink_bridge_probe_firmware(int index);
 
+/// Execute a Commander-style `exec <Command>` string against the selected probe.
+/// Returns captured stdout/callback text. Caller frees. Null on failure.
+char* jlink_bridge_exec_command(int index, const char* exec_cmd_utf8);
+
 /// `{"status":"updated"|"current"|"failed","firmware":"...","error":""}` — caller frees.
 char* jlink_bridge_update_firmware(int index);
 
