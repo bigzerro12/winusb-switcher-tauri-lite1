@@ -7,6 +7,13 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      build_linux_i686:
+        description: "Build Linux i686 artifacts (requires self-hosted runner)"
+        required: false
+        default: "false"
+        type: choice
+        options: ["false", "true"]
 
 permissions:
   contents: read
@@ -166,27 +173,12 @@ jobs:
   # Node 20 has no linux-x86 build → reuse frontend artifact; Node 16 linux-x86 runs staging.mjs only.
   build-linux-i686:
     needs: linux-frontend-dist
-    runs-on: ubuntu-22.04
-    continue-on-error: true
-    container:
-      # Docker Hub `i386/ubuntu` is only maintained up to 18.04; use a 22.04 i386 image.
-      image: asabatep/ubuntu-i386:22.04
+    # GitHub-hosted runners can't run JavaScript actions inside a 32-bit container because the runner's
+    # Node binary is 64-bit (actions like checkout fail with /__e/node20/bin/node not found).
+    # Run this job only on a self-hosted i686-capable runner when explicitly requested.
+    if: github.event_name == 'workflow_dispatch' && inputs.build_linux_i686 == 'true'
+    runs-on: [self-hosted, linux, i686]
     steps:
-      - name: Install OS packages
-        run: |
-          # Some 32-bit base images ship with only "main" enabled; Tauri build deps live in "universe".
-          printf '%s\n' \
-            'deb http://archive.ubuntu.com/ubuntu jammy universe' \
-            'deb http://archive.ubuntu.com/ubuntu jammy-updates universe' \
-            'deb http://archive.ubuntu.com/ubuntu jammy-backports universe' \
-            'deb http://archive.ubuntu.com/ubuntu jammy-security universe' \
-            >> /etc/apt/sources.list
-          apt-get update
-          apt-get install -y --no-install-recommends \
-            git ca-certificates curl xz-utils \
-            build-essential pkg-config libssl-dev \
-            libwebkit2gtk-4.1-dev librsvg2-dev
-
       - uses: actions/checkout@v4
 
       - name: Fetch prebuilt frontend
@@ -217,8 +209,6 @@ jobs:
       - name: Build & package (Linux i686)
         run: |
           cd src-tauri
-          # Ubuntu 22.04 i386 is a partial archive: libayatana-appindicator3-dev and patchelf are not
-          # published for i386, so we build the .deb only and use the classic libappindicator3 headers.
           cargo tauri build --config tauri.conf.ci-prefrontend.json --bundles deb
         env:
           PATH: /root/.cargo/bin:/usr/local/bin:/usr/bin:/bin
@@ -238,7 +228,6 @@ jobs:
       - build-windows
       - build-macos
       - build-linux
-      - build-linux-i686
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
