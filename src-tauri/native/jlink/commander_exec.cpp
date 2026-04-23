@@ -75,15 +75,6 @@ static bool _SelectProbeFromProvidedList(JLinkARMDLL& a, int index, const std::v
 
 static bool _ConnectToJLinkInternal(JLinkARMDLL& a, std::string& out_err) {
   out_err.clear();
-
-  // Disable the J-Link default "auto firmware update on connect" behavior.
-  // Commander supports this via `exec DisableAutoUpdateFW` before SelectProbe/Open.
-  // We apply it immediately before OpenEx for every connection attempt.
-  {
-    char out[512] = {};
-    (void)a.JLINKARM_ExecCommand("DisableAutoUpdateFW", out, static_cast<int>(sizeof(out) - 1));
-  }
-
   const char* open_err = a.JLINKARM_OpenEx(&log_cb, &err_cb);
   if (open_err != nullptr) {
     out_err = std::string("OpenEx: ") + open_err;
@@ -144,21 +135,20 @@ bool _ConnectToJLink(JLinkARMDLL& a, int index, const std::vector<JLINKARM_EMU_C
     return false;
   }
 
+  // Disable the J-Link default "auto firmware update on connect" behavior.
+  // Do this *after* selecting the probe but *before* OpenEx, consistent with Commander.
+  {
+    std::string exec_err;
+    (void)_ExecExecCommand(a, index, list, "DisableAutoUpdateFW", exec_err);
+    // Don't fail the connection if the DLL doesn't recognize the exec; OpenEx will still work.
+  }
+
   return _ConnectToJLinkInternal(a, out_err);
 }
 
 const char* _OpenExCapture(JLinkARMDLL& a, std::string& cap) {
   cap.clear();
   g_capture = &cap;
-
-  // Disable the default auto-update behavior before opening the J-Link connection.
-  // Capture any callback output into `cap` for support logs.
-  {
-    char out[512] = {};
-    (void)a.JLINKARM_ExecCommand("DisableAutoUpdateFW", out, static_cast<int>(sizeof(out) - 1));
-    if (out[0]) cap.append(out);
-  }
-
   const char* err = a.JLINKARM_OpenEx(&log_cb, &err_cb);
   g_capture = nullptr;
   return err;
@@ -169,6 +159,17 @@ bool _ConnectToJLinkCapture(JLinkARMDLL& a, int index, const std::vector<JLINKAR
   out_capture.clear();
   if (!_SelectProbeFromProvidedList(a, index, list, out_err)) {
     return false;
+  }
+
+  // Disable the default auto-update behavior before opening the J-Link connection.
+  // Capture any output into `out_capture` for support logs.
+  {
+    std::string exec_err;
+    const std::string exec_out = _ExecExecCommand(a, index, list, "DisableAutoUpdateFW", exec_err);
+    if (!exec_out.empty()) {
+      out_capture += exec_out;
+      if (!out_capture.empty() && out_capture.back() != '\n') out_capture.push_back('\n');
+    }
   }
 
   const char* open_err = _OpenExCapture(a, out_capture);
@@ -202,6 +203,15 @@ bool _EnsureSelectedUsbSn(JLinkARMDLL& a, int index, const std::vector<JLINKARM_
     return false;
   }
   io_capture.clear();
+  // Keep auto-update disabled for the reconnect path too.
+  {
+    std::string exec_err;
+    const std::string exec_out = _ExecExecCommand(a, index, list, "DisableAutoUpdateFW", exec_err);
+    if (!exec_out.empty()) {
+      io_capture += exec_out;
+      if (!io_capture.empty() && io_capture.back() != '\n') io_capture.push_back('\n');
+    }
+  }
   const char* open_err = _OpenExCapture(a, io_capture);
   if (open_err != nullptr) {
     out_err = std::string("OpenEx: ") + open_err;
