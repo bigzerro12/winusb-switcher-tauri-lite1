@@ -185,16 +185,6 @@ char* jlink_bridge_update_firmware(int index) {
   bool updated = commander_exec::_CallbackLogSuggestsFirmwareActivity(open_cap);
   std::string out_all = open_cap;
 
-  U32 rc = 0;
-  const std::string cap_update = commander_exec::_CaptureUpdateFirmwareIfNewer(*a, &rc);
-  env_diag << "JLINKARM_UpdateFirmwareIfNewer rc=" << static_cast<unsigned long>(rc) << "\n";
-  if (!cap_update.empty()) {
-    if (!out_all.empty()) out_all += "\n";
-    out_all += cap_update;
-  }
-  updated = updated || commander_exec::_CallbackLogSuggestsFirmwareActivity(cap_update);
-  updated = updated || (rc != 0);
-
   char fw[512] = {};
   a->JLINKARM_GetFirmwareString(fw, static_cast<int>(sizeof(fw) - 1));
   commander_exec::_DisconnectFromJLink(*a);

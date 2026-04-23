@@ -36,8 +36,5 @@ bool _CallbackLogSuggestsFirmwareActivity(const std::string& s);
 bool _ContainsUnknownCommand(const std::string& s);
 std::string _GuessFirmwareBinName(const JLINKARM_EMU_CONNECT_INFO& e);
 
-// Capture callback output during UpdateFirmwareIfNewer.
-std::string _CaptureUpdateFirmwareIfNewer(JLinkARMDLL& a, U32* out_rc);
-
 } // namespace commander_exec
 

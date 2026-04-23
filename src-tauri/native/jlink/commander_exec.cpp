@@ -231,15 +231,6 @@ std::string _GuessFirmwareBinName(const JLINKARM_EMU_CONNECT_INFO& e) {
   return "JLink_OB_S124.bin";
 }
 
-std::string _CaptureUpdateFirmwareIfNewer(JLinkARMDLL& a, U32* out_rc) {
-  std::string cap;
-  g_capture = &cap;
-  const U32 rc = a.JLINKARM_UpdateFirmwareIfNewer();
-  g_capture = nullptr;
-  if (out_rc) *out_rc = rc;
-  return cap;
-}
-
 void _ExecSleep(unsigned ms) {
   std::this_thread::sleep_for(std::chrono::milliseconds(ms));
 }

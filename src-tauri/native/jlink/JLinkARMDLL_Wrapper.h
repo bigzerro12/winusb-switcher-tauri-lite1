@@ -44,7 +44,6 @@ public:
   const char* JLINKARM_OpenEx(JLINKARM_LOG* pfLog, JLINKARM_LOG* pfErrorOut);
   void        JLINKARM_GetFirmwareString(char* s, int BufferSize);
   U16         JLINKARM_UpdateFirmware(void);
-  U32         JLINKARM_UpdateFirmwareIfNewer(void);
   int         JLINKARM_UpdateReplaceFirmware(int Replace, const char* sInfo);
   int         JLINKARM_Connect(void);
   void        JLINKARM_Close(void);
@@ -127,7 +126,6 @@ private:
   using lpfnJLINKARM_OpenEx               = decltype(&::JLINKARM_OpenEx);
   using lpfnJLINKARM_GetFirmwareString    = decltype(&::JLINKARM_GetFirmwareString);
   using lpfnJLINKARM_UpdateFirmware       = decltype(&::JLINKARM_UpdateFirmware);
-  using lpfnJLINKARM_UpdateFirmwareIfNewer= decltype(&::JLINKARM_UpdateFirmwareIfNewer);
   using lpfnJLINKARM_UpdateReplaceFirmware= decltype(&::JLINKARM_UpdateReplaceFirmware);
   using lpfnJLINKARM_Connect              = decltype(&::JLINKARM_Connect);
   using lpfnJLINKARM_Close                = decltype(&::JLINKARM_Close);
@@ -200,7 +198,6 @@ private:
     lpfnJLINKARM_OpenEx               OpenEx               = nullptr;
     lpfnJLINKARM_GetFirmwareString    GetFirmwareString    = nullptr;
     lpfnJLINKARM_UpdateFirmware       UpdateFirmware       = nullptr;
-    lpfnJLINKARM_UpdateFirmwareIfNewer UpdateFirmwareIfNewer = nullptr;
     lpfnJLINKARM_UpdateReplaceFirmware UpdateReplaceFirmware = nullptr;
     lpfnJLINKARM_Connect              Connect              = nullptr;
     lpfnJLINKARM_Close                Close                = nullptr;

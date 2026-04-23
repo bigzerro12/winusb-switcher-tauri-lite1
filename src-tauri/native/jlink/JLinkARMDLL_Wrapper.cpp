@@ -40,7 +40,7 @@ bool JLinkARMDLL::Load(const std::string& DLLpath) {
   mapRequired(m_fn.OpenEx,                 "JLINKARM_OpenEx",                 ok);
   mapRequired(m_fn.GetFirmwareString,      "JLINKARM_GetFirmwareString",      ok);
   mapOptional(m_fn.UpdateFirmware,         "JLINKARM_UpdateFirmware");
-  mapOptional(m_fn.UpdateFirmwareIfNewer,  "JLINKARM_UpdateFirmwareIfNewer");
+  // Intentionally not loading JLINKARM_UpdateFirmwareIfNewer.
   mapOptional(m_fn.UpdateReplaceFirmware,  "JLINKARM_UpdateReplaceFirmware");
   mapOptional(m_fn.Connect,               "JLINKARM_Connect");
   mapRequired(m_fn.Close,                  "JLINKARM_Close",                  ok);
@@ -150,9 +150,6 @@ void JLinkARMDLL::JLINKARM_GetFirmwareString(char* s, int BufferSize)
 
 U16  JLinkARMDLL::JLINKARM_UpdateFirmware(void)
      { return m_fn.UpdateFirmware ? m_fn.UpdateFirmware() : 0; }
-
-U32  JLinkARMDLL::JLINKARM_UpdateFirmwareIfNewer(void)
-     { return m_fn.UpdateFirmwareIfNewer ? m_fn.UpdateFirmwareIfNewer() : 0; }
 
 int  JLinkARMDLL::JLINKARM_UpdateReplaceFirmware(int Replace, const char* sInfo)
      { return m_fn.UpdateReplaceFirmware ? m_fn.UpdateReplaceFirmware(Replace, sInfo) : -1; }

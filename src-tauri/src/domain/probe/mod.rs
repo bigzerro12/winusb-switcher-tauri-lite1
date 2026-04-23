@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::domain::jlink::service::JLinkService;
 use crate::domain::jlink::types::{
-    FirmwareUpdateResult, InstallStatus, Probe, ProbeProvider, UsbDriverMode, UsbDriverResult,
+    InstallStatus, Probe, ProbeProvider, UsbDriverMode, UsbDriverResult,
 };
 use crate::error::AppResult;
 use crate::infra::runtime::bundled::JLinkRuntime;
@@ -48,7 +48,6 @@ pub trait ProbeBackend {
     fn ensure_ready(runtime: Option<&Self::Runtime>) -> AppResult<&Self::Runtime>;
 
     fn scan_probes(rt: &Self::Runtime) -> AppResult<Vec<Probe>>;
-    fn update_firmware_only(rt: &Self::Runtime, probe_index: usize) -> AppResult<FirmwareUpdateResult>;
     fn switch_usb_driver(
         rt: &Self::Runtime,
         probe_index: usize,
@@ -77,27 +76,9 @@ pub fn scan_probes(rt: &ActiveRuntime) -> AppResult<Vec<Probe>> {
     <JLinkService as ProbeBackend>::scan_probes(rt)
 }
 
-fn startup_firmware_ensure_forced_from_env() -> bool {
-    std::env::var("WINUSB_STARTUP_FIRMWARE_ENSURE")
-        .map(|v| {
-            let v = v.trim().to_ascii_lowercase();
-            v == "1" || v == "true" || v == "yes"
-        })
-        .unwrap_or(false)
-}
-
-/// Combined detect + scan (optionally bootstraps firmware once per session when missing).
+/// Combined detect + scan.
 ///
 /// Kept here so `commands/` stays thin and policy lives in the domain layer.
-///
-/// **Startup `UpdateFirmwareIfNewer`:** By default this runs **only on the first
-/// `detect_and_scan` of the session** when **any** probe lacks a non-empty `firmware`
-/// string after the initial scan. If enumeration already filled `firmware` (discovery
-/// string and/or OpenEx), the ensure step is **skipped** to keep startup fast—even if
-/// the probe could still accept a newer bundled `.bin`. That can make **release vs dev**
-/// look different when dev sometimes sees empty firmware on the first pass (timing /
-/// OpenEx). Set **`WINUSB_STARTUP_FIRMWARE_ENSURE=1`** to force the ensure step whenever
-/// the bootstrap slot is still available.
 pub fn detect_and_scan(
     runtime: Option<&ActiveRuntime>,
     run_firmware_bootstrap: bool,
@@ -113,49 +94,16 @@ pub fn detect_and_scan(
 
     let rt = ensure_ready(runtime)?;
 
-    let mut update_attempted = false;
-    let mut updated = 0usize;
-    let mut current = 0usize;
-    let mut failed = 0usize;
+    let update_attempted = false;
+    let updated = 0usize;
+    let current = 0usize;
+    let failed = 0usize;
 
-    let mut probes = scan_probes(rt)?;
+    let probes = scan_probes(rt)?;
 
-    // Important: UpdateFirmwareIfNewer can take seconds even when "current".
-    // To keep app startup snappy, only run the startup firmware ensure when firmware info
-    // is missing (common right after udev changes / first attach) and only once per session.
-    let has_missing_fw = probes
-        .iter()
-        .any(|p| p.firmware.as_deref().unwrap_or("").trim().is_empty());
-    let force_ensure = startup_firmware_ensure_forced_from_env();
-    let should_ensure_fw = has_missing_fw || force_ensure;
-
-    if run_firmware_bootstrap && should_ensure_fw {
-        if force_ensure && !has_missing_fw {
-            log::info!(
-                "[probe] startup firmware ensure: WINUSB_STARTUP_FIRMWARE_ENSURE set — running UpdateFirmwareIfNewer for all probes despite non-empty firmware strings"
-            );
-        }
-        update_attempted = true;
-        for i in 0..probes.len() {
-            match update_firmware_only(rt, i) {
-                Ok(FirmwareUpdateResult::Updated { .. }) => updated += 1,
-                Ok(FirmwareUpdateResult::Current { .. }) => current += 1,
-                Ok(FirmwareUpdateResult::Failed { .. }) => failed += 1,
-                Err(_) => failed += 1,
-            }
-        }
-
-        // Re-scan after any maintenance so firmware strings reflect reality post-reboot.
-        probes = scan_probes(rt)?;
-    } else if run_firmware_bootstrap && !should_ensure_fw {
-        log::info!(
-            "[probe] startup firmware ensure skipped: every probe already has a firmware string (set WINUSB_STARTUP_FIRMWARE_ENSURE=1 to force UpdateFirmwareIfNewer on open)"
-        );
-    } else if !run_firmware_bootstrap && should_ensure_fw {
-        log::debug!(
-            "[probe] firmware ensure not run: one-shot bootstrap slot already used this session (retry needs Refresh or new app launch)"
-        );
-    }
+    // NOTE: We intentionally do not run any firmware update routine during detect+scan.
+    // Firmware update is performed only when explicitly invoked by higher-level workflows.
+    let _ = run_firmware_bootstrap; // keep signature stable; flag is interpreted by caller.
 
     let summary = serde_json::json!({
         "attempted": update_attempted,
@@ -165,10 +113,6 @@ pub fn detect_and_scan(
     });
 
     Ok((status, probes, summary))
-}
-
-pub fn update_firmware_only(rt: &ActiveRuntime, probe_index: usize) -> AppResult<FirmwareUpdateResult> {
-    <JLinkService as ProbeBackend>::update_firmware_only(rt, probe_index)
 }
 
 pub fn switch_usb(rt: &ActiveRuntime, handle: ProbeHandle, mode: UsbDriverMode) -> AppResult<UsbDriverResult> {

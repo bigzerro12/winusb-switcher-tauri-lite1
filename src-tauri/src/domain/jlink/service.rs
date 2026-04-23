@@ -169,11 +169,6 @@ impl JLinkService {
         Ok(switch_usb_via_bridge(probe_index, mode))
     }
 
-    fn update_firmware_only(_rt: &JLinkRuntime, probe_index: usize) -> AppResult<FirmwareUpdateResult> {
-        log::debug!("[jlink] update_firmware_only: probe[{}]", probe_index);
-        Self::ensure_bridge_loaded()?;
-        Ok(update_firmware_via_bridge(probe_index))
-    }
 }
 
 // Backend abstraction implementation (enables future probe families without scattering branching logic).
@@ -194,10 +189,6 @@ impl ProbeBackend for JLinkService {
 
     fn scan_probes(rt: &Self::Runtime) -> AppResult<Vec<Probe>> {
         Self::scan_probes(rt)
-    }
-
-    fn update_firmware_only(rt: &Self::Runtime, probe_index: usize) -> AppResult<FirmwareUpdateResult> {
-        Self::update_firmware_only(rt, probe_index)
     }
 
     fn switch_usb_driver(rt: &Self::Runtime, probe_index: usize, mode: UsbDriverMode) -> AppResult<UsbDriverResult> {
