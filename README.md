@@ -63,6 +63,7 @@ yarn tauri:dev    # Full app: Vite + Tauri (required for IPC and J-Link)
 yarn tauri:build  # Release-style bundle
 ```
 
+- **`yarn tauri:dev`** — Runs [`scripts/tauri-dev.mjs`](scripts/tauri-dev.mjs): merges [`src-tauri/tauri.conf.dev.json`](src-tauri/tauri.conf.dev.json) for a dev-friendly CSP, picks a free port if `5173` is busy (IPv4/IPv6 aware), and on Windows clears a stale `winusb-switcher-lite.exe` before `cargo` relinks. Use this instead of raw `tauri dev` for day-to-day work.
 - **`yarn dev`** — Frontend only (Vite). Tauri commands and J-Link integration will not run.
 - **`yarn stage-jlink`** — Stages the zip for the current target when using the `jlink-bundles/` workflow outside `tauri dev` / `tauri build`.
 
@@ -74,7 +75,7 @@ yarn tauri:build  # Release-style bundle
 |------|-------------|
 | **`WINUSB_JLINK_DLL_OVERRIDE`** (Windows) | Optional absolute path to `JLink_x64.dll` or `JLinkARM.dll` to force-load a specific SEGGER build (e.g. compare against the bundled tree). |
 | **Logging** | Backend uses `log` + `tauri-plugin-log` (stdout, app log directory, and webview target in debug). Adjust levels in [`src-tauri/src/lib.rs`](src-tauri/src/lib.rs). |
-| **CSP** | Content Security Policy for the webview is set in [`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json); update it if the UI needs additional origins. |
+| **CSP** | Production CSP is in [`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json). Development merges [`src-tauri/tauri.conf.dev.json`](src-tauri/tauri.conf.dev.json) (via `yarn tauri:dev`) so Vite/HMR localhost origins are allowed without relaxing the shipped app policy. |
 
 ---
 
@@ -90,15 +91,15 @@ The history of this repository was migrated off LFS for CI reliability. If you f
 
 | Workflow | Purpose |
 |----------|---------|
-| [`ci.yml`](.github/workflows/ci.yml) | Frontend `yarn build`; Rust `clippy`, tests, and release build on Ubuntu and Windows. Triggers on pushes/PRs to `main`, `master`, and `winusb-switcher-tauri-lite1`. |
-| [`build.yml`](.github/workflows/build.yml) | Multi-platform installers; **release** job runs on `v*` tag pushes (and manual dispatch). |
+| [`ci.yml`](.github/workflows/ci.yml) | Frontend **`yarn lint`** and **`yarn build`**; Rust `clippy`, tests, and release build on Ubuntu and Windows. Triggers on pushes/PRs to `main`, `master`, and `winusb-switcher-tauri-lite1`. |
+| [`build.yml`](.github/workflows/build.yml) | Multi-platform installers; pushing a **`v*`** tag runs the matrix and the **release** job (creates a GitHub Release and uploads `.msi`/`.exe`, `.dmg`, `.deb`/`.AppImage` when builds succeed). Manual **workflow_dispatch** also supported. |
 
 **Release checklist (maintainers):**
 
 1. Align **semver** in `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml` (no `v` prefix in those files).
 2. Run `cargo check --manifest-path src-tauri/Cargo.toml` after changing `Cargo.toml` so `Cargo.lock` stays consistent.
-3. Tag `vX.Y.Z`, push the tag, and confirm workflow artifacts attach to the release.
-4. Grant GitHub Actions **workflow read/write** permission where needed so release assets can be published.
+3. Create an **annotated** tag `vX.Y.Z` on the release commit and **`git push origin vX.Y.Z`**. [`build.yml`](.github/workflows/build.yml) builds all targets and **`softprops/action-gh-release`** creates the GitHub Release with attached installers (no separate `gh release create` needed).
+4. In the repo **Settings → Actions → General → Workflow permissions**, allow **Read and write** (or ensure `GITHUB_TOKEN` can upload release assets) so the release job can publish files.
 5. For Windows, use **Authenticode** signing in CI or post-build if you want fewer SmartScreen warnings for unsigned builds.
 
 ---
