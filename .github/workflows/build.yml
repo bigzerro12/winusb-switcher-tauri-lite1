@@ -167,6 +167,7 @@ jobs:
   build-linux-i686:
     needs: linux-frontend-dist
     runs-on: ubuntu-22.04
+    continue-on-error: true
     container:
       # Docker Hub `i386/ubuntu` is only maintained up to 18.04; use a 22.04 i386 image.
       image: asabatep/ubuntu-i386:22.04
@@ -184,7 +185,7 @@ jobs:
           apt-get install -y --no-install-recommends \
             git ca-certificates curl xz-utils \
             build-essential pkg-config libssl-dev \
-            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev
+            libwebkit2gtk-4.1-dev librsvg2-dev
 
       - uses: actions/checkout@v4
 
