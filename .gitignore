@@ -47,3 +47,7 @@ resources/icon-source.png
 
 # Staged J-Link zip for the active platform only (see scripts/stage-jlink-for-build.mjs)
 src-tauri/resources/jlink/
+
+# Per-arch J-Link runtime copy for installers (see scripts/stage-jlink-runtime-for-bundle.mjs)
+src-tauri/resources/jlink-runtime-bundled/*
+!src-tauri/resources/jlink-runtime-bundled/.tauri-bundle-glob-anchor

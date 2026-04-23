@@ -14,6 +14,10 @@ permissions:
 jobs:
   build-windows:
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [x86_64-pc-windows-msvc, i686-pc-windows-msvc]
     steps:
       - uses: actions/checkout@v4
 
@@ -23,24 +27,27 @@ jobs:
           cache: yarn
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
 
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ./src-tauri
+          sharedKey: windows-${{ matrix.target }}
 
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Build & package (Windows)
-        run: yarn tauri:build
+      - name: Build & package (Windows ${{ matrix.target }})
+        run: yarn tauri:build -- --target ${{ matrix.target }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: bundle-windows
+          name: bundle-windows-${{ matrix.target }}
           path: |
-            src-tauri/target/release/bundle/nsis/
-            src-tauri/target/release/bundle/msi/
+            src-tauri/target/${{ matrix.target }}/release/bundle/nsis/
+            src-tauri/target/${{ matrix.target }}/release/bundle/msi/
           if-no-files-found: warn
           retention-days: 14
 
@@ -84,10 +91,15 @@ jobs:
 
   build-linux:
     runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [x86_64-unknown-linux-gnu, i686-unknown-linux-gnu]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Linux dependencies
+      - name: Install Linux dependencies (amd64)
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -97,30 +109,57 @@ jobs:
             patchelf \
             libssl-dev
 
+      - name: Install Linux dependencies (i686 via multiarch)
+        if: matrix.target == 'i686-unknown-linux-gnu'
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y \
+            gcc-multilib \
+            g++-multilib \
+            libc6-dev-i386 \
+            pkg-config \
+            libwebkit2gtk-4.1-dev:i386 \
+            libayatana-appindicator3-dev:i386 \
+            librsvg2-dev:i386 \
+            patchelf \
+            libssl-dev:i386
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: yarn
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
 
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ./src-tauri
+          sharedKey: linux-${{ matrix.target }}
 
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Build & package (Linux)
-        run: yarn tauri:build -- --bundles deb,appimage
+      - name: Build & package (Linux ${{ matrix.target }})
+        env:
+          PKG_CONFIG: /usr/bin/pkg-config
+          PKG_CONFIG_PATH: /usr/lib/i386-linux-gnu/pkgconfig
+        if: matrix.target == 'i686-unknown-linux-gnu'
+        run: yarn tauri:build -- --target ${{ matrix.target }} --bundles deb,appimage
+
+      - name: Build & package (Linux ${{ matrix.target }})
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: yarn tauri:build -- --target ${{ matrix.target }} --bundles deb,appimage
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: bundle-linux
+          name: bundle-linux-${{ matrix.target }}
           path: |
-            src-tauri/target/release/bundle/deb/
-            src-tauri/target/release/bundle/appimage/
+            src-tauri/target/${{ matrix.target }}/release/bundle/deb/
+            src-tauri/target/${{ matrix.target }}/release/bundle/appimage/
           if-no-files-found: warn
           retention-days: 14
 
@@ -134,8 +173,11 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Download all artifacts
+      - name: Download all bundle artifacts
         uses: actions/download-artifact@v4
+        with:
+          pattern: bundle-*
+          merge-multiple: true
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -145,11 +187,11 @@ jobs:
           draft: false
           generate_release_notes: true
           files: |
-            bundle-windows/**/*.msi
-            bundle-windows/**/*.exe
-            bundle-macos/**/*.dmg
-            bundle-macos/**/*.app.tar.gz
-            bundle-linux/**/*.AppImage
-            bundle-linux/**/*.deb
+            **/*.msi
+            **/*.exe
+            **/*.dmg
+            **/*.app.tar.gz
+            **/*.AppImage
+            **/*.deb
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

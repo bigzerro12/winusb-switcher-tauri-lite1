@@ -1,0 +1,3 @@
+This file keeps the Tauri bundle resource glob `jlink-runtime-bundled/**/*` satisfied for
+`cargo build` / `cargo clippy` before `stage-jlink-runtime-for-bundle.mjs` runs.
+Release installers replace this directory with the real per-target J-Link tree.

@@ -1,13 +1,13 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "WinUSB Switcher Lite",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "identifier": "com.winusbswitcher.lite",
   "build": {
     "frontendDist": "../out/renderer",
     "devUrl": "http://localhost:5173",
     "beforeDevCommand": "yarn dev",
-    "beforeBuildCommand": "yarn build"
+    "beforeBuildCommand": "yarn build && node scripts/stage-jlink-runtime-for-bundle.mjs"
   },
   "app": {
     "withGlobalTauri": false,
@@ -39,7 +39,7 @@
     "resources": [
       "resources/_bundle_manifest.txt",
       "resources/segger-99-jlink.rules",
-      "resources/jlink-runtime/**/*"
+      "resources/jlink-runtime-bundled/**/*"
     ]
   },
   "plugins": {

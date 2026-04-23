@@ -1,0 +1,3 @@
+# 32-bit Linux userland from an amd64 GitHub runner (multilib / -m32 link).
+[target.i686-unknown-linux-gnu]
+rustflags = ["-C", "link-arg=-m32"]

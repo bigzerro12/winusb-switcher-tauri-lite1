@@ -39,7 +39,7 @@ A **versioned** layout is also supported, e.g. `jlink-v936/<platform>/` (see `bu
 1. The J-Link library for that OS (`JLink_x64.dll`, `JLinkARM.dll`, or `libjlinkarm.so` / `libjlinkarm.so.9`).
 2. A **`Firmwares/`** directory next to that library, with the `.bin` files the SEGGER stack expects.
 
-**Optional zip staging:** If you maintain `src-tauri/jlink-bundles/<os>/<arch>/JLink_V930a.zip` (see [`.gitattributes`](.gitattributes)), run `yarn stage-jlink` before a raw `tauri` / `cargo` build. The default [`tauri.conf.json`](src-tauri/tauri.conf.json) bundles **`resources/jlink-runtime/**/*`**; keep that aligned with your packaging strategy.
+**Release bundles:** [`tauri.conf.json`](src-tauri/tauri.conf.json) ships **`resources/jlink-runtime-bundled/**/*`**, populated automatically in `beforeBuildCommand` by [`scripts/stage-jlink-runtime-for-bundle.mjs`](scripts/stage-jlink-runtime-for-bundle.mjs) from **`TAURI_ENV_TARGET_TRIPLE`** (only the matching `windows-*` / `linux-*` tree). The full multi-arch tree stays in `resources/jlink-runtime/` for development. **Optional zip staging:** if you use `src-tauri/jlink-bundles/`, run `yarn stage-jlink` where applicable (see [`.gitattributes`](.gitattributes)).
 
 ---
 
@@ -74,6 +74,7 @@ yarn tauri:build  # Release-style bundle
 | Item | Description |
 |------|-------------|
 | **`WINUSB_JLINK_DLL_OVERRIDE`** (Windows) | Optional absolute path to `JLink_x64.dll` or `JLinkARM.dll` to force-load a specific SEGGER build (e.g. compare against the bundled tree). |
+| **`WINUSB_STARTUP_FIRMWARE_ENSURE`** | If set to `1`, `true`, or `yes`, the **first** `detect_and_scan` of the session runs **`UpdateFirmwareIfNewer` for every probe** even when firmware strings are already shown. Default behavior skips that step when all probes have strings (faster startup). Useful to align release behavior with “always ensure” or to match dev when enumeration fills strings immediately. |
 | **Logging** | Backend uses `log` + `tauri-plugin-log` (stdout, app log directory, and webview target in debug). Adjust levels in [`src-tauri/src/lib.rs`](src-tauri/src/lib.rs). |
 | **CSP** | Production CSP is in [`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json). Development merges [`src-tauri/tauri.conf.dev.json`](src-tauri/tauri.conf.dev.json) (via `yarn tauri:dev`) so Vite/HMR localhost origins are allowed without relaxing the shipped app policy. |
 
@@ -92,7 +93,7 @@ The history of this repository was migrated off LFS for CI reliability. If you f
 | Workflow | Purpose |
 |----------|---------|
 | [`ci.yml`](.github/workflows/ci.yml) | Frontend **`yarn lint`** and **`yarn build`**; Rust `clippy`, tests, and release build on Ubuntu and Windows. Triggers on pushes/PRs to `main`, `master`, and `winusb-switcher-tauri-lite1`. |
-| [`build.yml`](.github/workflows/build.yml) | Multi-platform installers; pushing a **`v*`** tag runs the matrix and the **release** job (creates a GitHub Release and uploads `.msi`/`.exe`, `.dmg`, `.deb`/`.AppImage` when builds succeed). Manual **workflow_dispatch** also supported. |
+| [`build.yml`](.github/workflows/build.yml) | Multi-platform installers; pushing a **`v*`** tag runs the matrix and the **release** job (creates a GitHub Release and uploads Windows **x64 + x86**, Linux **x64 + x86**, macOS universal `.dmg`/`.app`, and `.deb`/`.AppImage` when builds succeed). Manual **workflow_dispatch** also supported. |
 
 **Release checklist (maintainers):**
 
@@ -134,6 +135,7 @@ The history of this repository was migrated off LFS for CI reliability. If you f
 | Linux: wrong ELF / `.so` not found | Match app architecture to `linux-32` vs `linux-64`; check `LD_LIBRARY_PATH` and `ldd` on `JLinkExe` / bundled libs if you customize layout. |
 | “Runtime not prepared” | Call **`prepare_bundled_jlink`** from the UI bootstrap before probe operations. |
 | CI checkout errors | Ensure workflows use a standard `actions/checkout@v4` (no special LFS setup required for this repo). |
+| Release `.exe` doesn’t run startup firmware update but dev does | **By design:** startup **`UpdateFirmwareIfNewer`** only runs when **any** probe has an **empty** `firmware` field after the first scan. Packaged builds often get firmware text from discovery/OpenEx immediately, so the step is skipped. **Dev** may briefly see empty firmware (timing / first OpenEx), which triggers the ensure. Check logs for `startup firmware ensure skipped`. To force the same ensure as dev, set **`WINUSB_STARTUP_FIRMWARE_ENSURE=1`** before launching (see Configuration table). |
 
 ---
 

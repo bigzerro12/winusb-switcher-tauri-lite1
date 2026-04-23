@@ -1,9 +1,11 @@
 //! Bundled SEGGER J-Link runtime resolution helpers.
 //!
 //! Product decision: **no install/download/extract**.
-//! We only load J-Link runtime files shipped under `src-tauri/resources/jlink-runtime/...`.
+//! We load J-Link runtime files from `src-tauri/resources/jlink-runtime/...` in **dev**
+//! (full tree), and from **`jlink-runtime-bundled/`** first in **packaged** builds
+//! (single-arch subtree staged at build time).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use tauri::{AppHandle, Manager};
 
@@ -18,6 +20,63 @@ pub const WINUSB_JLINK_DLL_PATH_ENV: &str = "WINUSB_JLINK_DLL_PATH";
 //  B) Unversioned:
 //     resources/jlink-runtime/{windows-64,windows-32,linux-64,linux-32}/...
 const JLINK_BUNDLED_VERSION_DIR: &str = "jlink-v936";
+
+/// Slim install tree (preferred in release) then full repo-style tree.
+const JLINK_RUNTIME_TREE_NAMES: [&str; 2] = ["jlink-runtime-bundled", "jlink-runtime"];
+
+#[cfg(target_os = "windows")]
+fn windows_dll_candidates(res_dir: &Path, platform: &str, dll_name: &str) -> Vec<PathBuf> {
+    let mut v = Vec::with_capacity(8);
+    for tree in JLINK_RUNTIME_TREE_NAMES {
+        v.push(
+            res_dir
+                .join("resources")
+                .join(tree)
+                .join(JLINK_BUNDLED_VERSION_DIR)
+                .join(platform)
+                .join(dll_name),
+        );
+        v.push(
+            res_dir
+                .join(tree)
+                .join(JLINK_BUNDLED_VERSION_DIR)
+                .join(platform)
+                .join(dll_name),
+        );
+        v.push(
+            res_dir
+                .join("resources")
+                .join(tree)
+                .join(platform)
+                .join(dll_name),
+        );
+        v.push(res_dir.join(tree).join(platform).join(dll_name));
+    }
+    v
+}
+
+#[cfg(target_os = "linux")]
+fn linux_runtime_dir_candidates(res_dir: &Path, platform: &str) -> Vec<PathBuf> {
+    let mut v = Vec::with_capacity(8);
+    for tree in JLINK_RUNTIME_TREE_NAMES {
+        v.push(
+            res_dir
+                .join("resources")
+                .join(tree)
+                .join(JLINK_BUNDLED_VERSION_DIR)
+                .join(platform),
+        );
+        v.push(
+            res_dir
+                .join(tree)
+                .join(JLINK_BUNDLED_VERSION_DIR)
+                .join(platform),
+        );
+        v.push(res_dir.join("resources").join(tree).join(platform));
+        v.push(res_dir.join(tree).join(platform));
+    }
+    v
+}
 
 fn resource_dir(app: &AppHandle) -> AppResult<PathBuf> {
     app.path()
@@ -65,27 +124,7 @@ pub fn resolve_bundled_jlinkarm_dll(app: &AppHandle) -> AppResult<PathBuf> {
         "JLinkARM.dll"
     };
 
-    let candidates = [
-        // versioned (resource_dir may already be .../resources)
-        res_dir
-            .join("resources")
-            .join("jlink-runtime")
-            .join(JLINK_BUNDLED_VERSION_DIR)
-            .join(platform)
-            .join(dll_name),
-        res_dir
-            .join("jlink-runtime")
-            .join(JLINK_BUNDLED_VERSION_DIR)
-            .join(platform)
-            .join(dll_name),
-        // unversioned
-        res_dir
-            .join("resources")
-            .join("jlink-runtime")
-            .join(platform)
-            .join(dll_name),
-        res_dir.join("jlink-runtime").join(platform).join(dll_name),
-    ];
+    let candidates = windows_dll_candidates(&res_dir, platform, dll_name);
 
     for c in &candidates {
         if c.is_file() {
@@ -94,9 +133,9 @@ pub fn resolve_bundled_jlinkarm_dll(app: &AppHandle) -> AppResult<PathBuf> {
     }
 
     Err(AppError::Runtime(format!(
-        "Bundled J-Link DLL not found.\nLooked for:\n  {}\n  {}\n\nExpected layout:\n  src-tauri/resources/jlink-runtime/{}/{}/{}\n",
-        candidates[0].display(),
-        candidates[1].display(),
+        "Bundled J-Link DLL not found.\nFirst tried:\n  {}\n  {}\n\nExpected layout (versioned or flat) under jlink-runtime-bundled/ or jlink-runtime/:\n  {}/{}/{}\n",
+        candidates.first().map(|p| p.display().to_string()).unwrap_or_default(),
+        candidates.get(1).map(|p| p.display().to_string()).unwrap_or_default(),
         JLINK_BUNDLED_VERSION_DIR,
         platform,
         dll_name
@@ -133,24 +172,7 @@ pub fn resolve_bundled_linux_runtime_dir(app: &AppHandle) -> AppResult<PathBuf> 
         "linux-32"
     };
 
-    let candidates = [
-        // versioned
-        res_dir
-            .join("resources")
-            .join("jlink-runtime")
-            .join(JLINK_BUNDLED_VERSION_DIR)
-            .join(platform),
-        res_dir
-            .join("jlink-runtime")
-            .join(JLINK_BUNDLED_VERSION_DIR)
-            .join(platform),
-        // unversioned
-        res_dir
-            .join("resources")
-            .join("jlink-runtime")
-            .join(platform),
-        res_dir.join("jlink-runtime").join(platform),
-    ];
+    let candidates = linux_runtime_dir_candidates(&res_dir, platform);
 
     for c in &candidates {
         if c.is_dir() {
@@ -159,9 +181,9 @@ pub fn resolve_bundled_linux_runtime_dir(app: &AppHandle) -> AppResult<PathBuf> 
     }
 
     Err(AppError::Runtime(format!(
-        "Bundled J-Link runtime dir not found.\nLooked for:\n  {}\n  {}\n\nExpected layout:\n  src-tauri/resources/jlink-runtime/{}/{}/\n",
-        candidates[0].display(),
-        candidates[1].display(),
+        "Bundled J-Link runtime dir not found.\nFirst tried:\n  {}\n  {}\n\nExpected layout under jlink-runtime-bundled/ or jlink-runtime/:\n  {}/{}/\n",
+        candidates.first().map(|p| p.display().to_string()).unwrap_or_default(),
+        candidates.get(1).map(|p| p.display().to_string()).unwrap_or_default(),
         JLINK_BUNDLED_VERSION_DIR,
         platform
     )))
