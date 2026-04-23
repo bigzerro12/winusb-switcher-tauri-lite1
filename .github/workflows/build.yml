@@ -184,7 +184,7 @@ jobs:
           apt-get install -y --no-install-recommends \
             git ca-certificates curl xz-utils \
             build-essential pkg-config libssl-dev \
-            libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev
 
       - uses: actions/checkout@v4
 
@@ -216,7 +216,9 @@ jobs:
       - name: Build & package (Linux i686)
         run: |
           cd src-tauri
-          cargo tauri build --config tauri.conf.ci-prefrontend.json --bundles deb,appimage
+          # Ubuntu 22.04 i386 is a partial archive: libayatana-appindicator3-dev and patchelf are not
+          # published for i386, so we build the .deb only and use the classic libappindicator3 headers.
+          cargo tauri build --config tauri.conf.ci-prefrontend.json --bundles deb
         env:
           PATH: /root/.cargo/bin:/usr/local/bin:/usr/bin:/bin
 
