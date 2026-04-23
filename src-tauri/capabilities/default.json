@@ -1,7 +1,7 @@
 {
   "identifier": "default",
   "description": "Default permissions for WinUSB Switcher Lite",
-  "windows": ["main", "jlink-downloader"],
+  "windows": ["main"],
   "permissions": [
     "core:default",
     "shell:allow-open"

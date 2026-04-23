@@ -136,6 +136,15 @@ The history of this repository was migrated off LFS for CI reliability. If you f
 
 ---
 
+## Scope and limitations
+
+- **J-Link only today:** The bundled runtime and native bridge target SEGGER’s library. A second probe family needs its own `native/*` tree and Rust domain module; see `src-tauri/src/domain/probe/mod.rs` module docs.
+- **In-process native code:** The J-Link DLL/SO runs in the app process; a native crash can exit the whole app. A sidecar process would isolate that (not implemented here).
+- **CI without hardware:** Workflows run `yarn lint`, TypeScript build, Clippy, and Rust unit tests. USB enumeration and driver switching are not exercised automatically.
+- **Capabilities** apply only to windows that exist in `tauri.conf.json` (default label `main`).
+
+---
+
 ## License
 
 MIT — see [`LICENSE`](LICENSE).

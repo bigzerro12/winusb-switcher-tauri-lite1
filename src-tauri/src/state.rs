@@ -4,6 +4,11 @@ use std::sync::Mutex;
 
 use crate::domain::probe::ActiveRuntime;
 
+const POISONED_RUNTIME_MUTEX: &str =
+    "AppState runtime mutex poisoned (another thread panicked while holding it)";
+const POISONED_BOOTSTRAP_MUTEX: &str =
+    "AppState firmware_bootstrap mutex poisoned (another thread panicked while holding it)";
+
 /// Application state: the prepared SEGGER runtime (bridge-loaded) and related metadata.
 pub struct AppState {
     runtime: Mutex<Option<ActiveRuntime>>,
@@ -19,17 +24,20 @@ impl AppState {
     }
 
     pub fn set_runtime(&self, rt: ActiveRuntime) {
-        *self.runtime.lock().unwrap() = Some(rt);
+        *self.runtime.lock().expect(POISONED_RUNTIME_MUTEX) = Some(rt);
     }
 
     pub fn get_runtime(&self) -> Option<ActiveRuntime> {
-        self.runtime.lock().unwrap().clone()
+        self.runtime.lock().expect(POISONED_RUNTIME_MUTEX).clone()
     }
 
     /// Returns true exactly once per app session.
     /// Used to run one-time startup maintenance (e.g. firmware ensure).
     pub fn take_firmware_bootstrap_slot(&self) -> bool {
-        let mut v = self.firmware_bootstrap_done.lock().unwrap();
+        let mut v = self
+            .firmware_bootstrap_done
+            .lock()
+            .expect(POISONED_BOOTSTRAP_MUTEX);
         if *v {
             return false;
         }

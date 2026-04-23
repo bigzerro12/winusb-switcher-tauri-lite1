@@ -1,6 +1,11 @@
 //! C++ bridge to SEGGER J-Link API:
 //! - Windows: `JLink_x64.dll` / `JLinkARM.dll`
 //! - Linux: `libjlinkarm.so`
+//!
+//! The static library links `native/jlink/` and keeps **process-global** state in C++
+//! (mutex + loaded API). Only one J-Link “session” semantics apply at a time; a future
+//! second vendor should use a separate FFI surface (and ideally a separate `native/*`
+//! tree), not a shared generic handle, until both SDK shapes are known.
 
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;

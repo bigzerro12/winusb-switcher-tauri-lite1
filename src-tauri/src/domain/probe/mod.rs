@@ -2,6 +2,23 @@
 //!
 //! Tauri commands should depend on this module instead of `JLinkService` directly.
 //! J-Link remains the only backend today; `ProbeHandle::provider` is the extension point.
+//!
+//! ## Adding another probe family (e.g. E2)
+//!
+//! - Add a `ProbeProvider` variant, `domain/<vendor>/` with `ProbeBackend`, and parallel
+//!   `native/<vendor>/` + Rust FFI if the vendor ships a C/C++ API.
+//! - Replace [`ActiveRuntime`] `type` alias with an `enum` once more than one runtime
+//!   must be prepared in the same session; extend [`switch_usb`] (and commands) with
+//!   `match handle.provider { ... }` arms.
+//!
+//! ## Operational limits (intentional for this codebase)
+//!
+//! - **In-process native bridge:** SEGGER code runs in the app process; a hard crash in
+//!   the DLL/native layer can take down the UI. A sidecar binary would isolate that risk.
+//! - **No CI hardware tests:** `cargo test` covers pure Rust and JSON parsing; USB/probe
+//!   flows still need manual or lab automation with real devices.
+//! - **Platform feature gaps:** USB stack switching is centered on what J-Link exposes;
+//!   Linux paths differ from Windows (udev, permissions) and are documented in UX copy.
 
 use serde::{Deserialize, Serialize};
 
