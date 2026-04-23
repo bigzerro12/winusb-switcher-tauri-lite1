@@ -54,6 +54,7 @@ function inferTripleFromNode() {
   }
   if (platform === "linux") {
     if (arch === "x64") return "x86_64-unknown-linux-gnu";
+    if (arch === "ia32" || arch === "x32") return "i686-unknown-linux-gnu";
   }
   if (platform === "darwin") {
     return arch === "arm64" ? "aarch64-apple-darwin" : "x86_64-apple-darwin";

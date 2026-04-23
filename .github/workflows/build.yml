@@ -12,6 +12,29 @@ permissions:
   contents: read
 
 jobs:
+  # One Vite build for both Linux targets (amd64 runner + i386 container cannot run Node 20).
+  linux-frontend-dist:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: yarn
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build frontend (out/renderer)
+        run: yarn build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-frontend-dist
+          path: out/renderer
+          retention-days: 3
+
   build-windows:
     runs-on: windows-latest
     strategy:
@@ -89,10 +112,8 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-  # Linux x86 (i686) is not built here: Ubuntu does not ship libayatana-appindicator3-dev:i386,
-  # and current Node.js LTS has no official linux-ia32 binaries, so the Vite + tauri build
-  # cannot run in an i386 container. Staging still supports linux-32 for local/native builds.
   build-linux:
+    needs: linux-frontend-dist
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -122,8 +143,14 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
+      - name: Fetch prebuilt frontend
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-frontend-dist
+          path: out/renderer
+
       - name: Build & package (Linux x86_64)
-        run: yarn tauri:build -- --bundles deb,appimage
+        run: yarn tauri:build -- --config src-tauri/tauri.conf.ci-prefrontend.json --bundles deb,appimage
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -135,11 +162,72 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  # Native i386 userland: GTK/appindicator -dev packages exist (unlike :i386 multiarch on amd64).
+  # Node 20 has no linux-x86 build → reuse frontend artifact; Node 16 linux-x86 runs staging.mjs only.
+  build-linux-i686:
+    needs: linux-frontend-dist
+    runs-on: ubuntu-22.04
+    container:
+      image: i386/ubuntu:22.04
+    steps:
+      - name: Install OS packages
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            git ca-certificates curl xz-utils \
+            build-essential pkg-config libssl-dev \
+            libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      - uses: actions/checkout@v4
+
+      - name: Fetch prebuilt frontend
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-frontend-dist
+          path: out/renderer
+
+      - name: Install Node 16 (linux-x86) for J-Link staging script
+        run: |
+          curl -fsSL https://nodejs.org/dist/v16.20.2/node-v16.20.2-linux-x86.tar.xz -o /tmp/node.tar.xz
+          tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1
+          node -v
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo-tauri binary
+        uses: actions/cache@v4
+        id: tauri-cli-bin
+        with:
+          path: /root/.cargo/bin/cargo-tauri
+          key: tauri-cli-i686-2.10.1-v2
+
+      - name: Cargo install tauri-cli
+        if: steps.tauri-cli-bin.outputs.cache-hit != 'true'
+        run: cargo install tauri-cli --version 2.10.1
+
+      - name: Build & package (Linux i686)
+        run: |
+          cd src-tauri
+          cargo tauri build --config tauri.conf.ci-prefrontend.json --bundles deb,appimage
+        env:
+          PATH: /root/.cargo/bin:/usr/local/bin:/usr/bin:/bin
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-linux-i686-unknown-linux-gnu
+          path: |
+            src-tauri/target/release/bundle/deb/
+            src-tauri/target/release/bundle/appimage/
+          if-no-files-found: warn
+          retention-days: 14
+
   release:
     needs:
       - build-windows
       - build-macos
       - build-linux
+      - build-linux-i686
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
