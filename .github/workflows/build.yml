@@ -168,7 +168,8 @@ jobs:
     needs: linux-frontend-dist
     runs-on: ubuntu-22.04
     container:
-      image: i386/ubuntu:22.04
+      # `i386/ubuntu:22.04` tag doesn't exist on Docker Hub; Ubuntu 22.04 = jammy.
+      image: i386/ubuntu:jammy
     steps:
       - name: Install OS packages
         run: |
