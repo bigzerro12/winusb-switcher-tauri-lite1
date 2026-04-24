@@ -36,8 +36,16 @@ char* jlink_bridge_exec_command(int index, const char* exec_cmd_utf8);
 /// `{"status":"updated"|"current"|"failed","firmware":"...","error":""}` — caller frees.
 char* jlink_bridge_update_firmware(int index);
 
+/// Same as `jlink_bridge_update_firmware`, but resolves the probe by USB serial number at call time.
+/// Helps when indices reorder during reboot/re-enumeration. Caller frees.
+char* jlink_bridge_update_firmware_by_sn(unsigned int serial_number, int retries, unsigned int retry_delay_ms);
+
 /// `{"success":true|false,"error":"","rebootNotSupported":false}` — caller frees.
 char* jlink_bridge_switch_usb_driver(int index, int winusb /*1=WinUSB/WebUSB, 0=SEGGER*/);
+
+/// Same as `jlink_bridge_switch_usb_driver`, but resolves the probe by USB serial number at call time.
+/// Helps when indices reorder during reboot/re-enumeration. Caller frees.
+char* jlink_bridge_switch_usb_driver_by_sn(unsigned int serial_number, int winusb /*1=WinUSB/WebUSB, 0=SEGGER*/, int retries, unsigned int retry_delay_ms);
 
 /// Library product string e.g. "V9.36" — caller frees. Null if unavailable.
 char* jlink_bridge_dll_version_string(void);

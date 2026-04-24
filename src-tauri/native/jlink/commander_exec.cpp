@@ -75,12 +75,25 @@ static bool _SelectProbeFromProvidedList(JLinkARMDLL& a, int index, const std::v
 
 static bool _ConnectToJLinkInternal(JLinkARMDLL& a, std::string& out_err) {
   out_err.clear();
-  const char* open_err = a.JLINKARM_OpenEx(&log_cb, &err_cb);
-  if (open_err != nullptr) {
+  auto is_transient = [](const char* s) -> bool {
+    if (!s) return false;
+    const std::string msg(s);
+    return msg.find("Communication timed out") != std::string::npos ||
+           msg.find("Could not read J-Link capabilities") != std::string::npos ||
+           msg.find("Cannot connect to the probe/programmer") != std::string::npos ||
+           msg.find("Can not execute firmware update") != std::string::npos;
+  };
+
+  // Linux can be sensitive to back-to-back OpenEx calls right after enumeration or reboot.
+  // Retry a few times with small backoff for transient errors.
+  for (int attempt = 0; attempt < 3; ++attempt) {
+    const char* open_err = a.JLINKARM_OpenEx(&log_cb, &err_cb);
+    if (open_err == nullptr) return true;
     out_err = std::string("OpenEx: ") + open_err;
-    return false;
+    if (!is_transient(open_err) || attempt == 2) return false;
+    _ExecSleep(static_cast<unsigned>(200 + attempt * 250));
   }
-  return true;
+  return false;
 }
 
 void _DisconnectFromJLink(JLinkARMDLL& a) { a.JLINKARM_Close(); }
@@ -173,12 +186,29 @@ static bool _ConnectToJLinkCaptureWithPreOpenExec(
     return false;
   }
 
-  const char* open_err = _OpenExCapture(a, out_capture);
-  if (open_err != nullptr) {
+  auto is_transient = [](const char* s) -> bool {
+    if (!s) return false;
+    const std::string msg(s);
+    return msg.find("Communication timed out") != std::string::npos ||
+           msg.find("Could not read J-Link capabilities") != std::string::npos ||
+           msg.find("Cannot connect to the probe/programmer") != std::string::npos ||
+           msg.find("Can not execute firmware update") != std::string::npos;
+  };
+
+  // Retry OpenEx for transient failures, keeping capture output for diagnosis.
+  for (int attempt = 0; attempt < 3; ++attempt) {
+    const char* open_err = _OpenExCapture(a, out_capture);
+    if (open_err == nullptr) return true;
     out_err = std::string("OpenEx: ") + open_err;
-    return false;
+    if (!is_transient(open_err) || attempt == 2) return false;
+    if (!out_capture.empty() && out_capture.back() != '\n') out_capture.push_back('\n');
+    out_capture += "[retrying OpenEx]\n";
+    _ExecSleep(static_cast<unsigned>(200 + attempt * 250));
+    // Re-select before retry in case the device re-enumerated.
+    std::string sel_err;
+    _SelectProbeFromProvidedList(a, index, list, sel_err);
   }
-  return true;
+  return false;
 }
 
 bool _ConnectToJLink(JLinkARMDLL& a, int index, const std::vector<JLINKARM_EMU_CONNECT_INFO>& list, std::string& out_err) {

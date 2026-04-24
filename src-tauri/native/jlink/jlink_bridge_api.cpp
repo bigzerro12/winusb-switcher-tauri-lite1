@@ -178,6 +178,10 @@ char* jlink_bridge_exec_command(int index, const char* exec_cmd_utf8) {
   return bridge_util::dup_str(out);
 }
 
+// Internal helpers (no locking; callers must hold `g_mu`).
+static char* _UpdateFirmware_AssumingValidIndex(JLinkARMDLL& a, int index, const std::vector<JLINKARM_EMU_CONNECT_INFO>& list);
+static char* _SwitchUsb_AssumingValidIndex(JLinkARMDLL& a, int index, const std::vector<JLINKARM_EMU_CONNECT_INFO>& list, int winusb);
+
 char* jlink_bridge_update_firmware(int index) {
   std::lock_guard<std::mutex> lock(g_mu);
   g_err.clear();
@@ -194,6 +198,17 @@ char* jlink_bridge_update_firmware(int index) {
     set_err("invalid probe list or index");
     return nullptr;
   }
+  return _UpdateFirmware_AssumingValidIndex(*a, index, list);
+}
+
+static int _FindIndexBySerial(const std::vector<JLINKARM_EMU_CONNECT_INFO>& list, unsigned int serial_number) {
+  for (size_t i = 0; i < list.size(); ++i) {
+    if (static_cast<unsigned int>(list[i].SerialNumber) == serial_number) return static_cast<int>(i);
+  }
+  return -1;
+}
+
+static char* _UpdateFirmware_AssumingValidIndex(JLinkARMDLL& a, int index, const std::vector<JLINKARM_EMU_CONNECT_INFO>& list) {
   const auto& sel = list[static_cast<size_t>(index)];
 
   std::ostringstream env_diag;
@@ -211,17 +226,17 @@ char* jlink_bridge_update_firmware(int index) {
 
   std::string open_cap;
   std::string open_err_s;
-  if (!commander_exec::_ConnectToJLinkCapture(*a, index, list, open_cap, open_err_s)) {
+  if (!commander_exec::_ConnectToJLinkCapture(a, index, list, open_cap, open_err_s)) {
     set_err(open_err_s);
     return nullptr;
   }
 
   char fw_before[512] = {};
-  a->JLINKARM_GetFirmwareString(fw_before, static_cast<int>(sizeof(fw_before) - 1));
+  a.JLINKARM_GetFirmwareString(fw_before, static_cast<int>(sizeof(fw_before) - 1));
   std::string fw_before_s = bridge_util::firmware_compiled_date(fw_before);
   if (fw_before_s.empty() && fw_before[0]) fw_before_s = fw_before;
 
-  if (!commander_exec::_EnsureSelectedUsbSn(*a, index, list, open_cap, open_err_s, &env_diag)) {
+  if (!commander_exec::_EnsureSelectedUsbSn(a, index, list, open_cap, open_err_s, &env_diag)) {
     set_err(open_err_s);
     return nullptr;
   }
@@ -230,8 +245,8 @@ char* jlink_bridge_update_firmware(int index) {
   std::string out_all = open_cap;
 
   char fw[512] = {};
-  a->JLINKARM_GetFirmwareString(fw, static_cast<int>(sizeof(fw) - 1));
-  commander_exec::_DisconnectFromJLink(*a);
+  a.JLINKARM_GetFirmwareString(fw, static_cast<int>(sizeof(fw) - 1));
+  commander_exec::_DisconnectFromJLink(a);
 
   std::string fw_after_s = bridge_util::firmware_compiled_date(fw);
   if (fw_after_s.empty() && fw[0]) fw_after_s = fw;
@@ -243,10 +258,10 @@ char* jlink_bridge_update_firmware(int index) {
       commander_exec::_ExecSleep(250);
       std::string retry_cap;
       std::string retry_err;
-      if (!commander_exec::_ConnectToJLinkCapture(*a, index, list, retry_cap, retry_err)) continue;
+      if (!commander_exec::_ConnectToJLinkCapture(a, index, list, retry_cap, retry_err)) continue;
       char tmp[512] = {};
-      a->JLINKARM_GetFirmwareString(tmp, static_cast<int>(sizeof(tmp) - 1));
-      commander_exec::_DisconnectFromJLink(*a);
+      a.JLINKARM_GetFirmwareString(tmp, static_cast<int>(sizeof(tmp) - 1));
+      commander_exec::_DisconnectFromJLink(a);
       std::string tmp_s = bridge_util::firmware_compiled_date(tmp);
       if (tmp_s.empty() && tmp[0]) tmp_s = tmp;
       if (!tmp_s.empty()) fw_after_s = tmp_s;
@@ -260,7 +275,7 @@ char* jlink_bridge_update_firmware(int index) {
   std::string reboot_command;
   if (updated) {
     commander_exec::_ExecSleep(100);
-    const auto rr = commander_exec::_ExecReboot(*a, index, list);
+    const auto rr = commander_exec::_ExecReboot(a, index, list);
     commander_exec::_ExecSleep(100);
     reboot_attempted = rr.attempted;
     reboot_not_supported = rr.not_supported;
@@ -295,6 +310,62 @@ char* jlink_bridge_update_firmware(int index) {
   return bridge_util::dup_str(oss.str());
 }
 
+static char* _SwitchUsb_AssumingValidIndex(JLinkARMDLL& a, int index, const std::vector<JLINKARM_EMU_CONNECT_INFO>& list, int winusb) {
+  std::string detail_for_error;
+  const bool ok = winusb
+      ? commander_exec::_ExecWebUSBEnable(a, index, list, detail_for_error)
+      : commander_exec::_ExecWebUSBDisable(a, index, list, detail_for_error);
+  if (!ok) {
+    set_err(detail_for_error.empty() ? std::string("switch config failed") : detail_for_error);
+    std::ostringstream oss;
+    oss << "{\"success\":false,\"error\":\"Failed to switch probe config.\",\"detail\":\""
+        << bridge_util::json_escape_str(detail_for_error) << "\",\"rebootNotSupported\":false}";
+    return bridge_util::dup_str(oss.str());
+  }
+
+  commander_exec::_ExecSleep(100);
+  const auto rr = commander_exec::_ExecReboot(a, index, list);
+  commander_exec::_ExecSleep(100);
+
+  std::ostringstream oss;
+  oss << "{\"success\":true,\"error\":\"\",\"detail\":\"\",\"rebootNotSupported\":"
+      << (rr.not_supported ? "true" : "false")
+      << ",\"rebootAttempted\":" << (rr.attempted ? "true" : "false")
+      << ",\"rebootCommand\":\"" << bridge_util::json_escape(rr.command.c_str()) << "\""
+      << ",\"sleepMs\":100}";
+  return bridge_util::dup_str(oss.str());
+}
+
+char* jlink_bridge_update_firmware_by_sn(unsigned int serial_number, int retries, unsigned int retry_delay_ms) {
+  std::lock_guard<std::mutex> lock(g_mu);
+  g_err.clear();
+  JLinkARMDLL* a = api_or_set_err();
+  if (!a) return nullptr;
+
+#ifdef _WIN32
+  runtime_dirs::ScopedCwd _cwd(g_dll_dir);
+#endif
+
+  if (retries < 0) retries = 0;
+  if (retries > 50) retries = 50;
+  const int attempts = 1 + retries;
+
+  std::vector<JLINKARM_EMU_CONNECT_INFO> list;
+  for (int attempt = 0; attempt < attempts; ++attempt) {
+    const int n = commander_exec::_ExecShowEmuList(*a, list);
+    if (n >= 0) {
+      const int idx = _FindIndexBySerial(list, serial_number);
+      if (idx >= 0) {
+        return _UpdateFirmware_AssumingValidIndex(*a, idx, list);
+      }
+    }
+    if (attempt + 1 < attempts) commander_exec::_ExecSleep(retry_delay_ms);
+  }
+
+  set_err("probe not found by serial number");
+  return nullptr;
+}
+
 char* jlink_bridge_switch_usb_driver(int index, int winusb) {
   std::lock_guard<std::mutex> lock(g_mu);
   g_err.clear();
@@ -311,30 +382,38 @@ char* jlink_bridge_switch_usb_driver(int index, int winusb) {
     set_err("invalid probe list or index");
     return bridge_util::dup_str("{\"success\":false,\"error\":\"invalid index\",\"detail\":\"\",\"rebootNotSupported\":false}");
   }
+  return _SwitchUsb_AssumingValidIndex(*a, index, list, winusb);
+}
 
-  std::string detail_for_error;
-  const bool ok = winusb
-      ? commander_exec::_ExecWebUSBEnable(*a, index, list, detail_for_error)
-      : commander_exec::_ExecWebUSBDisable(*a, index, list, detail_for_error);
-  if (!ok) {
-    set_err(detail_for_error.empty() ? std::string("switch config failed") : detail_for_error);
-    std::ostringstream oss;
-    oss << "{\"success\":false,\"error\":\"Failed to switch probe config.\",\"detail\":\""
-        << bridge_util::json_escape_str(detail_for_error) << "\",\"rebootNotSupported\":false}";
-    return bridge_util::dup_str(oss.str());
+char* jlink_bridge_switch_usb_driver_by_sn(unsigned int serial_number, int winusb, int retries, unsigned int retry_delay_ms) {
+  std::lock_guard<std::mutex> lock(g_mu);
+  g_err.clear();
+  JLinkARMDLL* a = api_or_set_err();
+  if (!a) return nullptr;
+
+#ifdef _WIN32
+  runtime_dirs::ScopedCwd _cwd(g_dll_dir);
+#endif
+
+  if (retries < 0) retries = 0;
+  if (retries > 50) retries = 50;
+  const int attempts = 1 + retries;
+
+  std::vector<JLINKARM_EMU_CONNECT_INFO> list;
+  int last_n = -1;
+  for (int attempt = 0; attempt < attempts; ++attempt) {
+    last_n = commander_exec::_ExecShowEmuList(*a, list);
+    if (last_n >= 0) {
+      const int idx = _FindIndexBySerial(list, serial_number);
+      if (idx >= 0) {
+        return _SwitchUsb_AssumingValidIndex(*a, idx, list, winusb);
+      }
+    }
+    if (attempt + 1 < attempts) commander_exec::_ExecSleep(retry_delay_ms);
   }
 
-  commander_exec::_ExecSleep(100);
-  const auto rr = commander_exec::_ExecReboot(*a, index, list);
-  commander_exec::_ExecSleep(100);
-
-  std::ostringstream oss;
-  oss << "{\"success\":true,\"error\":\"\",\"detail\":\"\",\"rebootNotSupported\":"
-      << (rr.not_supported ? "true" : "false")
-      << ",\"rebootAttempted\":" << (rr.attempted ? "true" : "false")
-      << ",\"rebootCommand\":\"" << bridge_util::json_escape(rr.command.c_str()) << "\""
-      << ",\"sleepMs\":100}";
-  return bridge_util::dup_str(oss.str());
+  set_err(last_n < 0 ? "JLINKARM_EMU_GetList failed" : "probe not found by serial number");
+  return bridge_util::dup_str("{\"success\":false,\"error\":\"invalid index\",\"detail\":\"\",\"rebootNotSupported\":false}");
 }
 
 char* jlink_bridge_dll_version_string(void) {

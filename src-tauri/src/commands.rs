@@ -202,7 +202,7 @@ pub async fn switch_usb_driver(
     request: SwitchUsbRequest,
     state: State<'_, AppState>,
 ) -> Result<UsbDriverResult, AppError> {
-    let mut handle = ProbeHandle {
+    let handle = ProbeHandle {
         provider: request.provider,
         probe_index: request.probe_index,
     };
@@ -222,9 +222,12 @@ pub async fn switch_usb_driver(
             if !sn.trim().is_empty() {
                 match handle.provider {
                     ProbeProvider::JLink => {
-                        if let Ok(idx) = crate::domain::jlink::service::JLinkService::resolve_probe_index_by_serial(sn) {
-                            handle.probe_index = idx;
-                        }
+                        // Prefer SN-based switching end-to-end to avoid stale indices during reboot/re-enumeration.
+                        return crate::domain::jlink::service::JLinkService::switch_usb_driver_by_serial(
+                            rt_ref,
+                            sn,
+                            mode,
+                        );
                     }
                 }
             }

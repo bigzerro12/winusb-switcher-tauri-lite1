@@ -171,6 +171,102 @@ impl JLinkService {
 
 }
 
+impl JLinkService {
+    /// More stable switch path for Linux: resolve emulator by USB serial number at call time.
+    ///
+    /// This avoids stale list indices during reboot/re-enumeration and adds small list retries.
+    pub fn switch_usb_driver_by_serial(
+        _rt: &JLinkRuntime,
+        serial_number: &str,
+        mode: UsbDriverMode,
+    ) -> AppResult<UsbDriverResult> {
+        log::debug!("[jlink] switch_usb_driver_by_serial: sn={} mode={:?}", serial_number, mode);
+        Self::ensure_bridge_loaded()?;
+
+        let sn_u32: u32 = serial_number
+            .trim()
+            .parse()
+            .map_err(|_| AppError::Internal(format!("invalid serialNumber: {}", serial_number)))?;
+
+        // During firmware update / reboot, the probe may temporarily disappear from EMU_GetList.
+        // Retry list resolution for a short time.
+        let retries = 20;
+        let retry_delay_ms = 250;
+
+        match update_firmware_via_bridge_by_sn(sn_u32, retries, retry_delay_ms) {
+            FirmwareUpdateResult::Failed { error } => {
+                log::warn!(
+                    "[jlink] firmware update failed before USB driver switch (sn={}): {}",
+                    serial_number,
+                    error
+                );
+                return Ok(UsbDriverResult {
+                    success: false,
+                    error: Some(format!("Firmware update failed: {}", error)),
+                    detail: None,
+                    reboot_not_supported: false,
+                });
+            }
+            FirmwareUpdateResult::Updated { .. } => {
+                log::info!(
+                    "[jlink] Probe firmware updated (sn={}); continuing with USB driver switch",
+                    serial_number
+                );
+            }
+            FirmwareUpdateResult::Current { .. } => {
+                log::info!(
+                    "[jlink] Probe firmware already current (sn={}); continuing with USB driver switch",
+                    serial_number
+                );
+            }
+        }
+
+        Ok(switch_usb_via_bridge_by_sn(sn_u32, mode, retries, retry_delay_ms))
+    }
+}
+
+fn update_firmware_via_bridge_by_sn(
+    serial_number: u32,
+    retries: i32,
+    retry_delay_ms: u32,
+) -> FirmwareUpdateResult {
+    match bridge::update_firmware_json_by_sn(serial_number, retries, retry_delay_ms) {
+        Ok(raw) => parse_firmware_update_response(serial_number as usize, &raw),
+        Err(e) => {
+            log::warn!(
+                "[jlink][bridge] update_firmware_json_by_sn failed sn={}: {}",
+                serial_number,
+                e
+            );
+            FirmwareUpdateResult::Failed {
+                error: e.to_string(),
+            }
+        }
+    }
+}
+
+fn switch_usb_via_bridge_by_sn(
+    serial_number: u32,
+    mode: UsbDriverMode,
+    retries: i32,
+    retry_delay_ms: u32,
+) -> UsbDriverResult {
+    let winusb = matches!(mode, UsbDriverMode::WinUsb);
+    match bridge::switch_usb_json_by_sn(serial_number, winusb, retries, retry_delay_ms) {
+        Ok(raw) => parse_switch_usb_response(serial_number as usize, &raw),
+        Err(e) => UsbDriverResult {
+            success: false,
+            error: Some(format!(
+                "{}\n\n(native detail)\n{}",
+                e,
+                bridge::last_error()
+            )),
+            detail: Some(bridge::last_error()),
+            reboot_not_supported: false,
+        },
+    }
+}
+
 // Backend abstraction implementation (enables future probe families without scattering branching logic).
 impl ProbeBackend for JLinkService {
     type Runtime = JLinkRuntime;
@@ -193,31 +289,6 @@ impl ProbeBackend for JLinkService {
 
     fn switch_usb_driver(rt: &Self::Runtime, probe_index: usize, mode: UsbDriverMode) -> AppResult<UsbDriverResult> {
         Self::switch_usb_driver(rt, probe_index, mode)
-    }
-}
-
-impl JLinkService {
-    /// Resolve the current bridge index for a probe by serial number.
-    ///
-    /// Indices can reorder during reboot/re-enumeration; serial numbers remain stable.
-    pub fn resolve_probe_index_by_serial(serial_number: &str) -> AppResult<usize> {
-        use serde_json::Value;
-
-        let json = bridge::list_probes_json().map_err(AppError::from)?;
-        let rows: Vec<Value> =
-            serde_json::from_str(&json).map_err(|e| AppError::Internal(e.to_string()))?;
-
-        for row in rows {
-            let sn = row["serialNumber"].as_str().unwrap_or("");
-            if sn == serial_number {
-                return Ok(row["index"].as_u64().unwrap_or(0) as usize);
-            }
-        }
-
-        Err(AppError::Bridge(format!(
-            "Probe not found (serialNumber={})",
-            serial_number
-        )))
     }
 }
 

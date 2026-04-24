@@ -32,7 +32,14 @@ unsafe extern "C" {
     fn jlink_bridge_probe_firmware(index: i32) -> *mut c_char;
     fn jlink_bridge_exec_command(index: i32, exec_cmd_utf8: *const c_char) -> *mut c_char;
     fn jlink_bridge_update_firmware(index: i32) -> *mut c_char;
+    fn jlink_bridge_update_firmware_by_sn(serial_number: u32, retries: i32, retry_delay_ms: u32) -> *mut c_char;
     fn jlink_bridge_switch_usb_driver(index: i32, winusb: i32) -> *mut c_char;
+    fn jlink_bridge_switch_usb_driver_by_sn(
+        serial_number: u32,
+        winusb: i32,
+        retries: i32,
+        retry_delay_ms: u32,
+    ) -> *mut c_char;
     fn jlink_bridge_dll_version_string() -> *mut c_char;
 }
 
@@ -127,9 +134,39 @@ pub fn update_firmware_json(index: usize) -> Result<String, String> {
 }
 
 #[cfg(any(target_os = "windows", target_os = "linux"))]
+pub fn update_firmware_json_by_sn(
+    serial_number: u32,
+    retries: i32,
+    retry_delay_ms: u32,
+) -> Result<String, String> {
+    unsafe {
+        let p = jlink_bridge_update_firmware_by_sn(serial_number, retries, retry_delay_ms);
+        take_c_str(p).ok_or_else(|| c_err_msg())
+    }
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 pub fn switch_usb_json(index: usize, winusb: bool) -> Result<String, String> {
     unsafe {
         let p = jlink_bridge_switch_usb_driver(index as i32, if winusb { 1 } else { 0 });
+        take_c_str(p).ok_or_else(|| c_err_msg())
+    }
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+pub fn switch_usb_json_by_sn(
+    serial_number: u32,
+    winusb: bool,
+    retries: i32,
+    retry_delay_ms: u32,
+) -> Result<String, String> {
+    unsafe {
+        let p = jlink_bridge_switch_usb_driver_by_sn(
+            serial_number,
+            if winusb { 1 } else { 0 },
+            retries,
+            retry_delay_ms,
+        );
         take_c_str(p).ok_or_else(|| c_err_msg())
     }
 }
@@ -180,6 +217,25 @@ pub fn switch_usb_json(_index: usize, _winusb: bool) -> Result<String, String> {
 }
 
 #[cfg(not(any(target_os = "windows", target_os = "linux")))]
+pub fn update_firmware_json_by_sn(
+    _serial_number: u32,
+    _retries: i32,
+    _retry_delay_ms: u32,
+) -> Result<String, String> {
+    Err("Native J-Link bridge is only available on Windows and Linux.".to_string())
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "linux")))]
+pub fn switch_usb_json_by_sn(
+    _serial_number: u32,
+    _winusb: bool,
+    _retries: i32,
+    _retry_delay_ms: u32,
+) -> Result<String, String> {
+    Err("Native J-Link bridge is only available on Windows and Linux.".to_string())
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "linux")))]
 pub fn dll_version_string() -> Option<String> {
     None
 }
@@ -217,7 +273,26 @@ pub mod bridge {
         super::update_firmware_json(index).map_err(BridgeError::Failed)
     }
 
+    pub fn update_firmware_json_by_sn(
+        serial_number: u32,
+        retries: i32,
+        retry_delay_ms: u32,
+    ) -> Result<String, BridgeError> {
+        super::update_firmware_json_by_sn(serial_number, retries, retry_delay_ms)
+            .map_err(BridgeError::Failed)
+    }
+
     pub fn switch_usb_json(index: usize, winusb: bool) -> Result<String, BridgeError> {
         super::switch_usb_json(index, winusb).map_err(BridgeError::Failed)
+    }
+
+    pub fn switch_usb_json_by_sn(
+        serial_number: u32,
+        winusb: bool,
+        retries: i32,
+        retry_delay_ms: u32,
+    ) -> Result<String, BridgeError> {
+        super::switch_usb_json_by_sn(serial_number, winusb, retries, retry_delay_ms)
+            .map_err(BridgeError::Failed)
     }
 }
