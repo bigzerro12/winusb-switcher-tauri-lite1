@@ -1,13 +1,16 @@
 //! C++ bridge to SEGGER J-Link API:
 //! - Windows: `JLink_x64.dll` / `JLinkARM.dll`
 //! - Linux: `libjlinkarm.so`
+//! - macOS: **not supported** (no Darwin build of this bridge in releases; stubs return errors).
 //!
 //! The static library links `native/jlink/` and keeps **process-global** state in C++
 //! (mutex + loaded API). Only one J-Link “session” semantics apply at a time; a future
 //! second vendor should use a separate FFI surface (and ideally a separate `native/*`
 //! tree), not a shared generic handle, until both SDK shapes are known.
 
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 use std::ffi::{CStr, CString};
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 use std::os::raw::c_char;
 use std::path::Path;
 
@@ -158,6 +161,11 @@ pub fn list_probes_json() -> Result<String, String> {
 
 #[cfg(not(any(target_os = "windows", target_os = "linux")))]
 pub fn probe_open_details(_index: usize) -> Result<ProbeOpenDetails, String> {
+    Err("Native J-Link bridge is only available on Windows and Linux.".to_string())
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "linux")))]
+pub fn exec_command(_index: usize, _exec_cmd: &str) -> Result<String, String> {
     Err("Native J-Link bridge is only available on Windows and Linux.".to_string())
 }
 

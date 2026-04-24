@@ -23,7 +23,7 @@ Desktop utility built with **Tauri 2** for switching SEGGER **J-Link** USB probe
 |----------|--------|--------|
 | **Windows** (x64, x86) | Supported | Bundled `JLink_x64.dll` or `JLinkARM.dll` under `jlink-runtime/windows-*`. |
 | **Linux** (x64, x86) | Supported | Bundled `libjlinkarm.so` (or `.so.9`); **udev** rules required for reliable USB access. |
-| **macOS** | Limited | Packaging may rely on stubs unless a full Darwin runtime is supplied; validate before release. |
+| **macOS** | Not supported | No bundled J-Link runtime or native bridge for Darwin; releases and `tauri.conf.json` bundle targets are **Windows + Linux only**. |
 
 ---
 
@@ -93,11 +93,11 @@ The history of this repository was migrated off LFS for CI reliability. If you f
 | Workflow | Purpose |
 |----------|---------|
 | [`ci.yml`](.github/workflows/ci.yml) | Frontend **`yarn lint`** and **`yarn build`**; Rust `clippy`, tests, and release build on Ubuntu and Windows. Triggers on pushes/PRs to `main`, `master`, and `winusb-switcher-tauri-lite1`. |
-| [`build.yml`](.github/workflows/build.yml) | **Windows** NSIS/MSI for **x64 + x86** (`windows-latest` matrix). **Linux x86_64** `.deb`/`.AppImage` on `ubuntu-22.04` using a shared **`linux-frontend-dist`** artifact and [`tauri.conf.ci-prefrontend.json`](src-tauri/tauri.conf.ci-prefrontend.json) so CI skips a second `yarn build`. **Linux i686** is **optional**: run **`workflow_dispatch`** with “build Linux i686” on a **`self-hosted`** runner tagged `linux` + `i686` (GitHub-hosted runners cannot run 32-bit Node/actions reliably). **macOS** universal DMG on `macos-latest`. Tag push `v*` merges `bundle-*` artifacts into one GitHub Release. |
+| [`build.yml`](.github/workflows/build.yml) | **Windows** NSIS/MSI for **x64 + x86** (`windows-latest` matrix). **Linux x86_64** `.deb`/`.AppImage` on `ubuntu-22.04` using a shared **`linux-frontend-dist`** artifact and [`tauri.conf.ci-prefrontend.json`](src-tauri/tauri.conf.ci-prefrontend.json) so CI skips a second `yarn build`. **Linux i686** is **optional**: run **`workflow_dispatch`** with “build Linux i686” on a **`self-hosted`** runner tagged `linux` + `i686`. **No macOS** release job. Tag push `v*` merges `bundle-*` artifacts into one GitHub Release. |
 
 **Release checklist (maintainers):**
 
-1. Align **semver** in `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml` (no `v` prefix in those files).
+1. Align **semver** in `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml` (no `v` prefix in those files). The first public release line is **v1.0.0**; do not resurrect retired pre-1.0 tags on the default branch without coordination.
 2. Run `cargo check --manifest-path src-tauri/Cargo.toml` after changing `Cargo.toml` so `Cargo.lock` stays consistent.
 3. Create an **annotated** tag `vX.Y.Z` on the release commit and **`git push origin vX.Y.Z`**. [`build.yml`](.github/workflows/build.yml) builds all targets and **`softprops/action-gh-release`** creates the GitHub Release with attached installers (no separate `gh release create` needed).
 4. In the repo **Settings → Actions → General → Workflow permissions**, allow **Read and write** (or ensure `GITHUB_TOKEN` can upload release assets) so the release job can publish files.
@@ -140,7 +140,7 @@ The history of this repository was migrated off LFS for CI reliability. If you f
 
 ## Scope and limitations
 
-- **J-Link only today:** The bundled runtime and native bridge target SEGGER’s library. A second probe family needs its own `native/*` tree and Rust domain module; see `src-tauri/src/domain/probe/mod.rs` module docs.
+- **J-Link only today:** The bundled runtime and native bridge target SEGGER’s library on **Windows and Linux** only. A second probe family needs its own `native/*` tree and Rust domain module; see `src-tauri/src/domain/probe/mod.rs` module docs.
 - **In-process native code:** The J-Link DLL/SO runs in the app process; a native crash can exit the whole app. A sidecar process would isolate that (not implemented here).
 - **CI without hardware:** Workflows run `yarn lint`, TypeScript build, Clippy, and Rust unit tests. USB enumeration and driver switching are not exercised automatically.
 - **Capabilities** apply only to windows that exist in `tauri.conf.json` (default label `main`).

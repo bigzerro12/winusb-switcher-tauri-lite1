@@ -4,7 +4,7 @@
  * runtime tree for the active Tauri target (windows-64/32, linux-64/32).
  *
  * Reads TAURI_ENV_TARGET_TRIPLE when present (tauri build / beforeBuildCommand).
- * macOS / universal targets get a stub tree so bundle globs still match.
+ * macOS / Darwin targets are rejected (no in-repo J-Link runtime for macOS).
  *
  * Dev (`tauri dev`) continues to use the full src-tauri/resources/jlink-runtime/
  * tree via bundled_jlink debug paths.
@@ -56,9 +56,6 @@ function inferTripleFromNode() {
     if (arch === "x64") return "x86_64-unknown-linux-gnu";
     if (arch === "ia32" || arch === "x32") return "i686-unknown-linux-gnu";
   }
-  if (platform === "darwin") {
-    return arch === "arm64" ? "aarch64-apple-darwin" : "x86_64-apple-darwin";
-  }
   return null;
 }
 
@@ -67,20 +64,26 @@ function getTriple() {
   if (raw && String(raw).trim()) return String(raw).trim();
   const t = inferTripleFromNode();
   if (t) return t;
+  const hint =
+    process.platform === "darwin"
+      ? " (macOS is not a supported bundle target for this project.)"
+      : "";
   throw new Error(
-    "stage-jlink-runtime-for-bundle: set TAURI_ENV_TARGET_TRIPLE or run from a supported host."
+    `stage-jlink-runtime-for-bundle: set TAURI_ENV_TARGET_TRIPLE or run from Windows or Linux.${hint}`
   );
 }
 
 /**
  * @param {string} triple
- * @returns {{ platform: string } | null} null → macOS/universal stub only
+ * @returns {{ platform: string }}
  */
 function mapTripleToRuntimePlatform(triple) {
   const t = triple.toLowerCase();
 
   if (t === "universal-apple-darwin" || t.includes("apple-darwin")) {
-    return null;
+    throw new Error(
+      "stage-jlink-runtime-for-bundle: macOS is not a supported target (no bundled J-Link runtime). Build Windows or Linux only."
+    );
   }
 
   if (t.includes("windows") || t.includes("pc-windows-msvc")) {
@@ -104,30 +107,12 @@ function listVersionDirs() {
     .map((e) => e.name);
 }
 
-function stageMacStub() {
-  cleanDestStagedPayloads();
-  const note = path.join(destRuntime, "BUNDLED_RUNTIME_SKIPPED_ON_MACOS.txt");
-  fs.writeFileSync(
-    note,
-    "macOS builds do not ship the in-repo jlink-runtime tree in this configuration.\n",
-    "utf8"
-  );
-  console.log("[stage-jlink-runtime-for-bundle] macOS/universal: stub only.");
-}
-
 const triple = getTriple();
 console.log(
   `[stage-jlink-runtime-for-bundle] triple=${triple} TAURI_ENV_TARGET_TRIPLE=${process.env.TAURI_ENV_TARGET_TRIPLE || ""}`
 );
 
-const mapped = mapTripleToRuntimePlatform(triple);
-
-if (mapped === null) {
-  stageMacStub();
-  process.exit(0);
-}
-
-const { platform } = mapped;
+const { platform } = mapTripleToRuntimePlatform(triple);
 cleanDestStagedPayloads();
 
 let copied = false;
