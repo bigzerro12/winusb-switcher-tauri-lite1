@@ -277,8 +277,8 @@ char* jlink_bridge_update_firmware(int index) {
       "\n" +
       std::string("Index=") + std::to_string(index) +
       "\nSerial=" + std::to_string(sel.SerialNumber) +
-      "\nProduct=" + std::string(sel.acProduct ? sel.acProduct : "") +
-      "\nNickname=" + std::string(sel.acNickName ? sel.acNickName : "") +
+      "\nProduct=" + std::string(sel.acProduct) +
+      "\nNickname=" + std::string(sel.acNickName) +
       "\nBefore=" + fw_before_s +
       "\nAfter=" + fw_after_s +
       (out_all.empty() ? std::string() : (std::string("\n\n[DLL callback log]\n") + bridge_util::tail_text(out_all, 2000)));
