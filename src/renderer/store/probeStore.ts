@@ -70,8 +70,9 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
     try {
       const result = await detectAndScan();
 
-      const overrides = get().driverOverrides;
-      const probes = applyDriverOverrides(result.probes, overrides);
+      // Fresh scan from the bridge — drop UI-only driver overrides so USB DRIVER / button state
+      // match JLINKARM_ReadEmuConfigMem again (stale WinUSB overrides used to keep the switch disabled).
+      const probes = result.probes;
       const selectedProbeId = preserveSelection(probes, get().selectedProbeId);
 
       set({
@@ -79,6 +80,7 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
         runtimeLibPath: result.status.nativeLibPath,
         runtimeVersion: result.status.version ?? "",
         probes,
+        driverOverrides: {},
         isLoading: false,
         selectedProbeId,
         ...resetUsbOperationStatus(),
@@ -90,12 +92,11 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
       const needsFirmwareRetry = probes.some((p) => !p.firmware);
       if (result.status.ready && needsFirmwareRetry) {
         set({ isFirmwareRefreshing: true });
-        const overrides2 = get().driverOverrides;
         const selectedBefore = get().selectedProbeId;
         for (const delayMs of [600, 1400, 2600]) {
           await new Promise((r) => setTimeout(r, delayMs));
           try {
-            const cur = applyDriverOverrides(await scanProbes(), overrides2);
+            const cur = await scanProbes();
             const selectedProbeId2 = preserveSelection(cur, selectedBefore);
             set({ probes: cur, selectedProbeId: selectedProbeId2 });
             if (cur.every((p) => !!p.firmware)) break;
@@ -121,10 +122,14 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
       ...resetUsbOperationStatus(),
     });
     try {
-      const overrides = get().driverOverrides;
-      const probes = applyDriverOverrides(await scanProbes(), overrides);
+      const probes = await scanProbes();
       const selectedProbeId = preserveSelection(probes, get().selectedProbeId);
-      set({ probes, selectedProbeId, isLoading: false });
+      set({
+        probes,
+        selectedProbeId,
+        isLoading: false,
+        driverOverrides: {},
+      });
     } catch (err) {
       set({
         error: normalizeTauriError(err),
@@ -135,10 +140,9 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
 
   scanProbesSilent: async () => {
     try {
-      const overrides = get().driverOverrides;
-      const probes = applyDriverOverrides(await scanProbes(), overrides);
+      const probes = await scanProbes();
       const selectedProbeId = preserveSelection(probes, get().selectedProbeId);
-      set({ probes, selectedProbeId });
+      set({ probes, selectedProbeId, driverOverrides: {} });
     } catch { /* ignore */ }
   },
 
@@ -221,6 +225,33 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
           // ignore and retry
         }
         await new Promise((r) => setTimeout(r, 350));
+      }
+
+      // Re-read USB driver (and firmware) from the bridge so the WinUSB button matches hardware truth.
+      try {
+        const fresh = await scanProbes();
+        if (fresh.length >= best.length) {
+          set({
+            probes: fresh,
+            selectedProbeId: preserveSelection(fresh, selectedBefore),
+            driverOverrides: {},
+          });
+        } else if (fresh.length > 0) {
+          const byId = new Map(fresh.map((p) => [p.id, p]));
+          const merged = best.map((p) => {
+            const u = byId.get(p.id);
+            return u ? { ...p, driver: u.driver, firmware: u.firmware ?? p.firmware } : p;
+          });
+          set({
+            probes: merged,
+            selectedProbeId: preserveSelection(merged, selectedBefore),
+            driverOverrides: {},
+          });
+        } else {
+          set({ driverOverrides: {} });
+        }
+      } catch {
+        set({ driverOverrides: {} });
       }
 
       const unplug = " You may need to unplug and replug your probe to apply the configuration changes.";

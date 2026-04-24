@@ -92,7 +92,12 @@ export default function Dashboard() {
 
   const selectedProbe = probes.find((p) => p.id === selectedProbeId);
   const isProbeBusy = usbDriverStatus === "switching";
-  const canSwitchToWinUSB = !!selectedProbe && selectedProbe.driver !== "WinUSB" && !isProbeBusy;
+  const canSwitchToWinUSB =
+    !!selectedProbe &&
+    selectedProbe.driver !== "WinUSB" &&
+    !isProbeBusy &&
+    !isLoading &&
+    !isFirmwareRefreshing;
 
   const handleRefresh = () => scanProbes();
 
@@ -161,7 +166,7 @@ export default function Dashboard() {
               <button
                 id="switch-button"
                 onClick={handleSwitchToWinUSB}
-                disabled={!canSwitchToWinUSB || isLoading}
+                disabled={!canSwitchToWinUSB}
                 className="btn btn-primary"
               >
                 {usbDriverStatus === "switching" ? "Switching..." : "Switch to WinUSB"}

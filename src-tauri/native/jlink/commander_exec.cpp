@@ -51,9 +51,9 @@ static void err_cb(const char* s) {
 // ─── "Commander-style" internal helpers ─────────────────────────────────────
 //
 // We mirror the structure of J-Link Commander's Main.c:
-// - One-time list query (ShowEmuList / SelectProbe)
-// - Select the desired emulator from the list
-// - OpenEx (connect to J-Link, not target)
+// - One-time list query (ShowEmuList)
+// - Pre-open ExecCommand toggles (e.g. DisableAutoUpdateFW) before SelectProbe
+// - Select the desired emulator, then OpenEx (connect to J-Link, not target)
 // - Execute the operation (ExecCommand, Read/WriteEmuConfigMem, etc.)
 // - Disconnect (Close)
 
@@ -129,6 +129,8 @@ int _ExecSelectEmuFromList(JLinkARMDLL& a, int index, std::vector<JLINKARM_EMU_C
 //  Connect / disconnect
 // ---------------------------------------------------------------------------
 
+// Commander order for pre-open toggles (e.g. DisableAutoUpdateFW / EnableAutoUpdateFW):
+//   JLINKARM_ExecCommand(...) while not connected, then SelectProbe, then OpenEx.
 static bool _ApplyPreOpenExec(JLinkARMDLL& a, int index, const std::vector<JLINKARM_EMU_CONNECT_INFO>& list, const char* exec_cmd, std::string* io_capture) {
   if (!exec_cmd || !exec_cmd[0]) return true;
   std::string exec_err;
@@ -149,10 +151,10 @@ static bool _ConnectToJLinkWithPreOpenExec(
     std::string& out_err
 ) {
   out_err.clear();
+  _ApplyPreOpenExec(a, index, list, pre_open_exec, /*io_capture=*/nullptr);
   if (!_SelectProbeFromProvidedList(a, index, list, out_err)) {
     return false;
   }
-  _ApplyPreOpenExec(a, index, list, pre_open_exec, /*io_capture=*/nullptr);
   return _ConnectToJLinkInternal(a, out_err);
 }
 
@@ -166,10 +168,10 @@ static bool _ConnectToJLinkCaptureWithPreOpenExec(
 ) {
   out_err.clear();
   out_capture.clear();
+  _ApplyPreOpenExec(a, index, list, pre_open_exec, &out_capture);
   if (!_SelectProbeFromProvidedList(a, index, list, out_err)) {
     return false;
   }
-  _ApplyPreOpenExec(a, index, list, pre_open_exec, &out_capture);
 
   const char* open_err = _OpenExCapture(a, out_capture);
   if (open_err != nullptr) {
@@ -184,7 +186,7 @@ bool _ConnectToJLink(JLinkARMDLL& a, int index, const std::vector<JLINKARM_EMU_C
 }
 
 const char* _OpenExCapture(JLinkARMDLL& a, std::string& cap) {
-  cap.clear();
+  // Do not clear `cap`: pre-open ExecCommand output may already be accumulated (Commander order).
   g_capture = &cap;
   const char* err = a.JLINKARM_OpenEx(&log_cb, &err_cb);
   g_capture = nullptr;
@@ -213,12 +215,8 @@ bool _EnsureSelectedUsbSn(JLinkARMDLL& a, int index, const std::vector<JLINKARM_
 
   if (diag) *diag << "GetSN_after_OpenEx=" << sn_after << " expected_serial=" << sel.SerialNumber << " MISMATCH\n";
   _DisconnectFromJLink(a);
-  if (a.JLINKARM_EMU_SelectByUSBSN(static_cast<U32>(sel.SerialNumber)) < 0) {
-    out_err = "SelectByUSBSN failed";
-    return false;
-  }
   io_capture.clear();
-  // Keep auto-update disabled for the reconnect path too.
+  // Commander order: DisableAutoUpdateFW before SelectProbe, then OpenEx.
   {
     std::string exec_err;
     const std::string exec_out = _ExecExecCommand(a, index, list, "DisableAutoUpdateFW", exec_err);
@@ -226,6 +224,10 @@ bool _EnsureSelectedUsbSn(JLinkARMDLL& a, int index, const std::vector<JLINKARM_
       io_capture += exec_out;
       if (!io_capture.empty() && io_capture.back() != '\n') io_capture.push_back('\n');
     }
+  }
+  if (a.JLINKARM_EMU_SelectByUSBSN(static_cast<U32>(sel.SerialNumber)) < 0) {
+    out_err = "SelectByUSBSN failed";
+    return false;
   }
   const char* open_err = _OpenExCapture(a, io_capture);
   if (open_err != nullptr) {
@@ -398,9 +400,9 @@ RebootResult _ExecReboot(JLinkARMDLL& a, int index, const std::vector<JLINKARM_E
 static bool ExecWinUSBConfig(JLinkARMDLL& a, int index, const std::vector<JLINKARM_EMU_CONNECT_INFO>& list, bool enable_winusb, std::string& out_detail_for_error) {
   out_detail_for_error.clear();
 
-  // For WinUSB switching we want Commander-like behavior:
-  // - exec EnableAutoUpdateFW
-  // - SelectProbe/OpenEx (which may auto-update firmware on connect)
+  // Commander order:
+  // - exec EnableAutoUpdateFW (before select/open)
+  // - SelectProbe + OpenEx (may auto-update firmware on connect)
   // - WebUSBEnable/WebUSBDisable
   // - sleep 100, reboot, sleep 100
   std::string conn_err;
