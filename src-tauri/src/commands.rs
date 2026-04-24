@@ -122,7 +122,7 @@ pub async fn detect_and_scan(state: State<'_, AppState>) -> Result<serde_json::V
     let run_firmware_bootstrap = state.take_firmware_bootstrap_slot();
 
     let (status, probes, firmware_update) =
-        match tokio::task::spawn_blocking(move || -> AppResult<(crate::domain::jlink::types::InstallStatus, Vec<Probe>, serde_json::Value)> {
+        match tokio::task::spawn_blocking(move || -> AppResult<(crate::domain::jlink::types::RuntimeStatus, Vec<Probe>, serde_json::Value)> {
             probe::detect_and_scan(rt.as_ref(), run_firmware_bootstrap)
         })
         .await
@@ -139,14 +139,14 @@ pub async fn detect_and_scan(state: State<'_, AppState>) -> Result<serde_json::V
         };
 
     log::debug!(
-        "[cmd] detect_and_scan: ok (installed={}, probes={})",
-        status.installed,
+        "[cmd] detect_and_scan: ok (ready={}, probes={})",
+        status.ready,
         probes.len()
     );
     Ok(serde_json::json!({ "status": status, "probes": probes, "firmwareUpdate": firmware_update }))
 }
 
-/// Scan probes only (J-Link already known to be installed).
+/// Scan probes only (runtime already prepared).
 #[tauri::command]
 pub async fn scan_probes(state: State<'_, AppState>) -> Result<Vec<Probe>, AppError> {
     log::debug!("[cmd] scan_probes: enter");

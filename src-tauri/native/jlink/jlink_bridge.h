@@ -25,8 +25,8 @@ const char* jlink_bridge_last_error(void);
 /// Caller must `jlink_bridge_free_string` the result. Null on failure.
 char* jlink_bridge_list_probes_json(void);
 
-/// After open: firmware line containing "compiled <date>" or raw GetFirmwareString. Caller frees.
-/// OpenEx + GetFirmwareString for one list index. USB: selects by serial first.
+/// After open: JSON `{"firmware":"...","usbDriver":"WinUSB"|"SEGGER"|"Unknown"}` (HW features byte, bit 3).
+/// OpenEx + ReadEmuConfigMem + GetFirmwareString for one list index. USB: selects by serial first. Caller frees.
 char* jlink_bridge_probe_firmware(int index);
 
 /// Execute a Commander-style `exec <Command>` string against the selected probe.

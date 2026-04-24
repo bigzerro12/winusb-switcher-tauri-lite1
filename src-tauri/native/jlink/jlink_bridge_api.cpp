@@ -125,13 +125,25 @@ char* jlink_bridge_probe_firmware(int index) {
     return nullptr;
   }
 
+  // CONFIG_OFF_HW_FEATURES — same offset as J-Link Commander `_ExecWinUSBConfig` (Main.c).
+  // Bit 3: WinUSB disable — 0 => WinUSB enabled, 1 => disabled (SEGGER USB stack path).
+  constexpr U32 CONFIG_OFF_HW_FEATURES = 0x8E;
+  U8 cfg_byte = 0;
+  const char* usb_driver = "Unknown";
+  if (a->JLINKARM_ReadEmuConfigMem(&cfg_byte, CONFIG_OFF_HW_FEATURES, 1) == 0) {
+    usb_driver = (cfg_byte & (1u << 3)) ? "SEGGER" : "WinUSB";
+  }
+
   char fw[512] = {};
   a->JLINKARM_GetFirmwareString(fw, static_cast<int>(sizeof(fw) - 1));
   commander_exec::_DisconnectFromJLink(*a);
 
   std::string out = bridge_util::firmware_compiled_date(fw);
   if (out.empty() && fw[0]) out = fw;
-  return bridge_util::dup_str(out);
+
+  std::ostringstream j;
+  j << "{\"firmware\":\"" << bridge_util::json_escape_str(out) << "\",\"usbDriver\":\"" << usb_driver << "\"}";
+  return bridge_util::dup_str(j.str());
 }
 
 char* jlink_bridge_exec_command(int index, const char* exec_cmd_utf8) {

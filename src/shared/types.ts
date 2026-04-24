@@ -14,9 +14,12 @@ export type Probe = {
   firmware?: string;
 };
 
-export type InstallStatus = {
-  installed: boolean;
-  path?: string;
+export type RuntimeStatus = {
+  /** True when the bundled J-Link runtime has been prepared and the native bridge is ready to use. */
+  ready: boolean;
+  /** Absolute path to the loaded J-Link shared library (DLL/.so) when ready. */
+  nativeLibPath?: string;
+  /** Human-friendly runtime version string (e.g. "V9.36"). */
   version?: string;
 };
 
@@ -57,13 +60,6 @@ export type JLinkDiagnostics = {
 
 // ─── Result Types ─────────────────────────────────────────────────────────────
 
-export type InstallResult = {
-  success: boolean;
-  cancelled?: boolean;
-  message: string;
-  path?: string;
-};
-
 export type UsbDriverMode = "winUsb" | "segger";
 
 export type UsbDriverResult = {
@@ -76,7 +72,7 @@ export type UsbDriverResult = {
 
 /** Combined result of the `detect_and_scan` IPC command. */
 export type DetectAndScanResult = {
-  status: InstallStatus;
+  status: RuntimeStatus;
   probes: Probe[];
 };
 

@@ -27,9 +27,10 @@ pub struct Probe {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct InstallStatus {
-    pub installed: bool,
-    pub path: Option<String>,
+pub struct RuntimeStatus {
+    pub ready: bool,
+    #[serde(rename = "nativeLibPath")]
+    pub native_lib_path: Option<String>,
     pub version: Option<String>,
 }
 

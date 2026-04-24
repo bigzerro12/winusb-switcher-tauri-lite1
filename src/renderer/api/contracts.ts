@@ -11,7 +11,7 @@
 import type {
   DetectAndScanResult,
   DriverType,
-  InstallStatus,
+  RuntimeStatus,
   Probe,
   ProviderType,
   UsbDriverResult,
@@ -42,11 +42,11 @@ function isProviderType(v: unknown): v is ProviderType {
   return v === "JLink";
 }
 
-function isInstallStatus(v: unknown): v is InstallStatus {
+function isRuntimeStatus(v: unknown): v is RuntimeStatus {
   return (
     isRecord(v) &&
-    isBoolean(v.installed) &&
-    isOptional(v.path, isString) &&
+    isBoolean(v.ready) &&
+    isOptional(v.nativeLibPath, isString) &&
     isOptional(v.version, isString)
   );
 }
@@ -54,10 +54,8 @@ function isInstallStatus(v: unknown): v is InstallStatus {
 /**
  * Raw probe as it arrives from Rust.
  *
- * `driver` is left as an arbitrary string here; the Rust service currently always
- * sends `"Unknown"`, and the renderer is responsible for mapping it to `DriverType`
- * via {@link toDriverType}. This keeps the backend free to evolve its string set
- * without breaking the frontend contract.
+ * `driver` is left as an arbitrary string here; the backend sends `SEGGER`, `WinUSB`, or
+ * `Unknown`, and the renderer maps to {@link DriverType} via {@link toDriverType}.
  */
 type RawProbe = Omit<Probe, "driver"> & { driver: string };
 
@@ -111,7 +109,7 @@ export function parseProbeList(raw: unknown): Probe[] {
 export function parseDetectAndScanResult(raw: unknown): DetectAndScanResult {
   if (
     !isRecord(raw) ||
-    !isInstallStatus(raw.status) ||
+    !isRuntimeStatus(raw.status) ||
     !Array.isArray(raw.probes) ||
     !raw.probes.every(isRawProbe)
   ) {

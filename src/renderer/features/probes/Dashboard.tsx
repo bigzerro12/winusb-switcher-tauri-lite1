@@ -79,8 +79,8 @@ export default function Dashboard() {
     probes,
     isLoading,
     isFirmwareRefreshing,
-    isInstalled,
-    installVersion,
+    isRuntimeReady,
+    runtimeVersion,
     selectedProbeId,
     error,
     scanProbes,
@@ -111,13 +111,13 @@ export default function Dashboard() {
         {error && <div className="error-message">{error}</div>}
 
         <section className="software-section">
-          <h2>J-LINK SOFTWARE</h2>
+          <h2>J-LINK RUNTIME</h2>
           <div className="software-info">
             <div className="software-details">
-              <div className="software-version">{installVersion || "SEGGER J-Link (version unknown)"}</div>
+              <div className="software-version">{runtimeVersion || "SEGGER J-Link (version unknown)"}</div>
               <div className="software-status">
-                <span className={`status-indicator ${isInstalled ? "detected" : "error"}`}></span>
-                <span className="status-text">{isInstalled ? "Detected" : "Not found"}</span>
+                <span className={`status-indicator ${isRuntimeReady ? "detected" : "error"}`}></span>
+                <span className="status-text">{isRuntimeReady ? "Ready" : "Not ready"}</span>
               </div>
             </div>
           </div>

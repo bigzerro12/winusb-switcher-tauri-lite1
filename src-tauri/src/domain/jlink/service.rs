@@ -4,11 +4,11 @@
 //! implementation behind `ProbeBackend`.
 
 use crate::domain::jlink::types::{
-    FirmwareUpdateResult, InstallStatus, Probe, ProbeProvider, UsbDriverMode, UsbDriverResult,
+    FirmwareUpdateResult, Probe, ProbeProvider, RuntimeStatus, UsbDriverMode, UsbDriverResult,
 };
 use crate::domain::probe::ProbeBackend;
 use crate::error::{AppError, AppResult, BridgeError};
-use crate::jlink_ffi::bridge;
+use crate::jlink_ffi::{bridge, ProbeOpenDetails};
 use crate::infra::runtime::bundled::JLinkRuntime;
 
 pub struct JLinkService;
@@ -93,7 +93,7 @@ impl JLinkService {
         }
     }
 
-    fn detect(runtime: Option<&JLinkRuntime>) -> InstallStatus {
+    fn detect(runtime: Option<&JLinkRuntime>) -> RuntimeStatus {
         if let Some(rt) = runtime {
             let ui_version = rt
                 .version
@@ -106,18 +106,18 @@ impl JLinkService {
                 rt.native_lib_path.display(),
                 rt.version
             );
-            return InstallStatus {
-                installed: true,
-                path: Some(rt.native_lib_path.to_string_lossy().into_owned()),
+            return RuntimeStatus {
+                ready: true,
+                native_lib_path: Some(rt.native_lib_path.to_string_lossy().into_owned()),
                 version: ui_version,
             };
         }
         log::debug!(
             "[jlink] detect: runtime not prepared yet (prepare_bundled_jlink not completed)"
         );
-        InstallStatus {
-            installed: false,
-            path: None,
+        RuntimeStatus {
+            ready: false,
+            native_lib_path: None,
             version: None,
         }
     }
@@ -179,7 +179,7 @@ impl ProbeBackend for JLinkService {
         Self::diagnostics_json(runtime)
     }
 
-    fn detect(runtime: Option<&Self::Runtime>) -> InstallStatus {
+    fn detect(runtime: Option<&Self::Runtime>) -> RuntimeStatus {
         Self::detect(runtime)
     }
 
@@ -288,11 +288,11 @@ fn scan_probes_via_bridge() -> AppResult<Vec<Probe>> {
 
         let t0 = std::time::Instant::now();
 
-        let try_read_fw = || -> Result<String, BridgeError> { bridge::probe_firmware(index) };
+        let try_read = || -> Result<ProbeOpenDetails, BridgeError> { bridge::probe_open_details(index) };
 
-        let (firmware, fw_src): (Option<String>, &'static str) = match try_read_fw() {
-            Ok(s) if !s.is_empty() => (Some(s), "bridge_openex"),
-            Ok(_) => (discovery_fw.clone(), "discovery_only"),
+        let (firmware, fw_src, driver_label): (Option<String>, &'static str, String) = match try_read() {
+            Ok(d) if !d.firmware.is_empty() => (Some(d.firmware), "bridge_openex", d.usb_driver),
+            Ok(d) => (discovery_fw.clone(), "discovery_only", d.usb_driver),
             Err(e) => {
                 // On cold start (or right after udev install), OpenEx may fail transiently.
                 // Retry once quickly to avoid "firmware missing until refresh".
@@ -303,33 +303,35 @@ fn scan_probes_via_bridge() -> AppResult<Vec<Probe>> {
 
                 if transient {
                     log::debug!(
-                        "[jlink] probe_firmware transient OpenEx error index={} sn={} — {} (retrying once)",
+                        "[jlink] probe_open_details transient OpenEx error index={} sn={} — {} (retrying once)",
                         index,
                         serial,
                         msg
                     );
                     std::thread::sleep(std::time::Duration::from_millis(250));
-                    match try_read_fw() {
-                        Ok(s) if !s.is_empty() => (Some(s), "bridge_openex_retry"),
-                        Ok(_) => (discovery_fw.clone(), "discovery_only_retry"),
+                    match try_read() {
+                        Ok(d) if !d.firmware.is_empty() => {
+                            (Some(d.firmware), "bridge_openex_retry", d.usb_driver)
+                        }
+                        Ok(d) => (discovery_fw.clone(), "discovery_only_retry", d.usb_driver),
                         Err(e2) => {
                             log::warn!(
-                                "[jlink] probe_firmware failed after retry index={} sn={} — {} (using discovery if present)",
+                                "[jlink] probe_open_details failed after retry index={} sn={} — {} (using discovery if present)",
                                 index,
                                 serial,
                                 e2
                             );
-                            (discovery_fw.clone(), "discovery_after_err")
+                            (discovery_fw.clone(), "discovery_after_err", "Unknown".to_string())
                         }
                     }
                 } else {
                     log::warn!(
-                        "[jlink] probe_firmware failed index={} sn={} — {} (using discovery if present)",
+                        "[jlink] probe_open_details failed index={} sn={} — {} (using discovery if present)",
                         index,
                         serial,
                         msg
                     );
-                    (discovery_fw.clone(), "discovery_after_err")
+                    (discovery_fw.clone(), "discovery_after_err", "Unknown".to_string())
                 }
             }
         };
@@ -349,7 +351,7 @@ fn scan_probes_via_bridge() -> AppResult<Vec<Probe>> {
             nick_name: row["nickName"].as_str().unwrap_or("").to_string(),
             provider: ProbeProvider::JLink,
             connection: row["connection"].as_str().unwrap_or("").to_string(),
-            driver: "Unknown".to_string(),
+            driver: driver_label,
             firmware,
         });
     }

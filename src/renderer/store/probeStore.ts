@@ -37,15 +37,15 @@ interface ProbeState {
   driverOverrides: Record<string, DriverType>;
   isLoading: boolean;
   isFirmwareRefreshing: boolean;
-  isInstalled: boolean | null;
-  installPath: string | undefined;
-  installVersion: string;
+  isRuntimeReady: boolean | null;
+  runtimeLibPath: string | undefined;
+  runtimeVersion: string;
   selectedProbeId: string | null;
   error: string | null;
   usbDriverStatus: "idle" | "switching" | "success" | "failed";
   usbDriverMessage: string;
 
-  checkInstallation: () => Promise<void>;
+  loadRuntimeAndProbes: () => Promise<void>;
   scanProbesSilent: () => Promise<void>;
   scanProbes: () => Promise<void>;
   selectProbe: (id: string | null) => void;
@@ -57,15 +57,15 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
   driverOverrides: {},
   isLoading: false,
   isFirmwareRefreshing: false,
-  isInstalled: null,
-  installPath: undefined,
-  installVersion: "",
+  isRuntimeReady: null,
+  runtimeLibPath: undefined,
+  runtimeVersion: "",
   selectedProbeId: null,
   error: null,
   usbDriverStatus: "idle",
   usbDriverMessage: "",
 
-  checkInstallation: async () => {
+  loadRuntimeAndProbes: async () => {
     set({ isLoading: true, error: null });
     try {
       const result = await detectAndScan();
@@ -75,9 +75,9 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
       const selectedProbeId = preserveSelection(probes, get().selectedProbeId);
 
       set({
-        isInstalled: result.status.installed,
-        installPath: result.status.path,
-        installVersion: result.status.version ?? "",
+        isRuntimeReady: result.status.ready,
+        runtimeLibPath: result.status.nativeLibPath,
+        runtimeVersion: result.status.version ?? "",
         probes,
         isLoading: false,
         selectedProbeId,
@@ -88,7 +88,7 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
       // or during cold start), retry silently a few times so the UI fills in without requiring
       // the user to hit Refresh.
       const needsFirmwareRetry = probes.some((p) => !p.firmware);
-      if (result.status.installed && needsFirmwareRetry) {
+      if (result.status.ready && needsFirmwareRetry) {
         set({ isFirmwareRefreshing: true });
         const overrides2 = get().driverOverrides;
         const selectedBefore = get().selectedProbeId;
@@ -107,7 +107,7 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
       }
     } catch (err) {
       set({
-        isInstalled: false,
+        isRuntimeReady: false,
         error: normalizeTauriError(err),
         isLoading: false,
       });

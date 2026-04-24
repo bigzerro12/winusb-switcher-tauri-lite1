@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::domain::jlink::service::JLinkService;
 use crate::domain::jlink::types::{
-    InstallStatus, Probe, ProbeProvider, UsbDriverMode, UsbDriverResult,
+    Probe, ProbeProvider, RuntimeStatus, UsbDriverMode, UsbDriverResult,
 };
 use crate::error::AppResult;
 use crate::infra::runtime::bundled::JLinkRuntime;
@@ -44,7 +44,7 @@ pub trait ProbeBackend {
     type Runtime;
 
     fn diagnostics_json(runtime: Option<&Self::Runtime>) -> serde_json::Value;
-    fn detect(runtime: Option<&Self::Runtime>) -> InstallStatus;
+    fn detect(runtime: Option<&Self::Runtime>) -> RuntimeStatus;
     fn ensure_ready(runtime: Option<&Self::Runtime>) -> AppResult<&Self::Runtime>;
 
     fn scan_probes(rt: &Self::Runtime) -> AppResult<Vec<Probe>>;
@@ -64,7 +64,7 @@ pub fn diagnostics_json(runtime: Option<&ActiveRuntime>) -> serde_json::Value {
     <JLinkService as ProbeBackend>::diagnostics_json(runtime)
 }
 
-pub fn detect(runtime: Option<&ActiveRuntime>) -> InstallStatus {
+pub fn detect(runtime: Option<&ActiveRuntime>) -> RuntimeStatus {
     <JLinkService as ProbeBackend>::detect(runtime)
 }
 
@@ -82,9 +82,9 @@ pub fn scan_probes(rt: &ActiveRuntime) -> AppResult<Vec<Probe>> {
 pub fn detect_and_scan(
     runtime: Option<&ActiveRuntime>,
     run_firmware_bootstrap: bool,
-) -> AppResult<(InstallStatus, Vec<Probe>, serde_json::Value)> {
+) -> AppResult<(RuntimeStatus, Vec<Probe>, serde_json::Value)> {
     let status = detect(runtime);
-    if !status.installed {
+    if !status.ready {
         return Ok((
             status,
             vec![],

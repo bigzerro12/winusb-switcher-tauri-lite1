@@ -11,6 +11,7 @@ Desktop utility built with **Tauri 2** for switching SEGGER **J-Link** USB probe
 
 - **Bootstrap** — Locates the bundled runtime, loads the native bridge, and configures process environment (`PATH` on Windows; `PATH` and `LD_LIBRARY_PATH` on Linux as needed).
 - **Probe discovery** — Lists connected probes (serial, product, nickname, connection, firmware string).
+- **USB driver column** — After opening each probe, reads the emulator **configuration** byte at offset **`0x8E`** (hardware features). **Bit 3** matches J-Link Commander’s `_ExecWinUSBConfig` semantics: **`0` → WinUSB enabled**, **`1` → WinUSB disabled (SEGGER USB path)**. This reflects the probe’s **stored** setting (apply after power cycle), not necessarily the OS driver node at this instant.
 - **USB driver mode** — Initiates driver switch workflow (including firmware check/update step via the SEGGER API where applicable).
 - **Diagnostics** — `get_jlink_diagnostics` IPC command exposes runtime paths, bridge state, and version fields for support.
 
@@ -92,7 +93,7 @@ The history of this repository was migrated off LFS for CI reliability. If you f
 | Workflow | Purpose |
 |----------|---------|
 | [`ci.yml`](.github/workflows/ci.yml) | Frontend **`yarn lint`** and **`yarn build`**; Rust `clippy`, tests, and release build on Ubuntu and Windows. Triggers on pushes/PRs to `main`, `master`, and `winusb-switcher-tauri-lite1`. |
-| [`build.yml`](.github/workflows/build.yml) | **Windows x64 + x86**, **Linux x86_64 + i686** `.deb`/`.AppImage`, macOS universal. Linux uses one **amd64 Vite** build (`linux-frontend-dist`), then **x86_64** packages on `ubuntu-22.04` and **i686** inside a **`i386/ubuntu:22.04`** container so GTK/appindicator **-dev** packages are native 32-bit (multiarch `:i386` on amd64 is incomplete). The i686 job uses **Node 16 linux-x86** only to run [`stage-jlink-runtime-for-bundle.mjs`](scripts/stage-jlink-runtime-for-bundle.mjs) and **`cargo install tauri-cli`** (no npm CLI for linux-x86). [`tauri.conf.ci-prefrontend.json`](src-tauri/tauri.conf.ci-prefrontend.json) skips `yarn build` when the artifact is already in `out/renderer`. |
+| [`build.yml`](.github/workflows/build.yml) | **Windows** NSIS/MSI for **x64 + x86** (`windows-latest` matrix). **Linux x86_64** `.deb`/`.AppImage` on `ubuntu-22.04` using a shared **`linux-frontend-dist`** artifact and [`tauri.conf.ci-prefrontend.json`](src-tauri/tauri.conf.ci-prefrontend.json) so CI skips a second `yarn build`. **Linux i686** is **optional**: run **`workflow_dispatch`** with “build Linux i686” on a **`self-hosted`** runner tagged `linux` + `i686` (GitHub-hosted runners cannot run 32-bit Node/actions reliably). **macOS** universal DMG on `macos-latest`. Tag push `v*` merges `bundle-*` artifacts into one GitHub Release. |
 
 **Release checklist (maintainers):**
 

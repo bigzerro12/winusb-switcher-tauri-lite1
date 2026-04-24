@@ -11,6 +11,13 @@ use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 use std::path::Path;
 
+/// One `OpenEx` session: firmware string plus USB driver mode from emu config (HW features bit 3).
+#[derive(Debug, Clone)]
+pub struct ProbeOpenDetails {
+    pub firmware: String,
+    pub usb_driver: String,
+}
+
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 #[link(name = "jlink_arm_bridge", kind = "static")]
 unsafe extern "C" {
@@ -85,10 +92,17 @@ pub fn list_probes_json() -> Result<String, String> {
 }
 
 #[cfg(any(target_os = "windows", target_os = "linux"))]
-pub fn probe_firmware(index: usize) -> Result<String, String> {
+pub fn probe_open_details(index: usize) -> Result<ProbeOpenDetails, String> {
     unsafe {
         let p = jlink_bridge_probe_firmware(index as i32);
-        take_c_str(p).ok_or_else(|| c_err_msg())
+        let raw = take_c_str(p).ok_or_else(|| c_err_msg())?;
+        let v: serde_json::Value = serde_json::from_str(&raw).map_err(|e| {
+            format!("probe_open_details: invalid JSON from bridge ({raw:?}): {e}")
+        })?;
+        Ok(ProbeOpenDetails {
+            firmware: v["firmware"].as_str().unwrap_or("").to_string(),
+            usb_driver: v["usbDriver"].as_str().unwrap_or("Unknown").to_string(),
+        })
     }
 }
 
@@ -143,7 +157,7 @@ pub fn list_probes_json() -> Result<String, String> {
 }
 
 #[cfg(not(any(target_os = "windows", target_os = "linux")))]
-pub fn probe_firmware(_index: usize) -> Result<String, String> {
+pub fn probe_open_details(_index: usize) -> Result<ProbeOpenDetails, String> {
     Err("Native J-Link bridge is only available on Windows and Linux.".to_string())
 }
 
@@ -183,8 +197,8 @@ pub mod bridge {
         super::list_probes_json().map_err(BridgeError::Failed)
     }
 
-    pub fn probe_firmware(index: usize) -> Result<String, BridgeError> {
-        super::probe_firmware(index).map_err(BridgeError::Failed)
+    pub fn probe_open_details(index: usize) -> Result<super::ProbeOpenDetails, BridgeError> {
+        super::probe_open_details(index).map_err(BridgeError::Failed)
     }
 
     pub fn exec_command(index: usize, cmd: &str) -> Result<String, BridgeError> {

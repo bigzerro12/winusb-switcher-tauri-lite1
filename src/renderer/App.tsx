@@ -7,7 +7,7 @@ import { useProbeStore } from "./store/probeStore";
 import Dashboard from "./features/probes/Dashboard";
 
 export default function App() {
-  const { isInstalled, isLoading, isFirmwareRefreshing, checkInstallation } = useProbeStore();
+  const { isRuntimeReady, isLoading, isFirmwareRefreshing, loadRuntimeAndProbes } = useProbeStore();
   const [bootstrap, setBootstrap] = useState<"pending" | "ok" | "error">("pending");
   const [bootstrapError, setBootstrapError] = useState<string>("");
 
@@ -29,14 +29,14 @@ export default function App() {
 
   useEffect(() => {
     if (bootstrap !== "ok") return;
-    checkInstallation().catch((err) => {
-      console.error("[App] checkInstallation failed:", err);
+    loadRuntimeAndProbes().catch((err) => {
+      console.error("[App] loadRuntimeAndProbes failed:", err);
     });
-  }, [bootstrap, checkInstallation]);
+  }, [bootstrap, loadRuntimeAndProbes]);
 
   useEffect(() => {
     resizeHeightToContent();
-  }, [bootstrap, isInstalled]);
+  }, [bootstrap, isRuntimeReady]);
 
   if (bootstrap === "pending") {
     return <BootstrapPending />;
@@ -46,7 +46,7 @@ export default function App() {
     return <BootstrapError error={bootstrapError} onRetry={() => void runBootstrap()} />;
   }
 
-  if (isInstalled === null) {
+  if (isRuntimeReady === null) {
     return <ProbeAccessPending isLoading={isLoading} isFirmwareRefreshing={isFirmwareRefreshing} />;
   }
 
