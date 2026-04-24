@@ -2,10 +2,19 @@
 
 Desktop utility built with **Tauri 2** for switching SEGGER **J-Link** USB probes between **WinUSB** and the default SEGGER USB stack (where supported). The application loads SEGGER’s J-Link **shared library in-process** through a small native bridge and ships a **trimmed runtime** under `src-tauri/resources/jlink-runtime/` (Windows DLLs or Linux `.so`, plus an adjacent **`Firmwares/`** tree). There is **no** in-app download, installer, or auto-update flow for SEGGER software.
 
-**Stack:** Rust (`src-tauri`), React 18, TypeScript, Vite, Tailwind.  
+**Bundled J-Link runtime:** **SEGGER J-Link Software V9.36** (DLL build **93600**) + probe firmware images under `Firmwares/`.  
+**Stack:** Rust (`src-tauri`), Tauri 2, React 18, TypeScript, Vite, Zustand, vanilla CSS.  
 **Compliance:** You are responsible for adhering to **SEGGER’s license and redistribution terms** for any J-Link binaries, firmware images, or documentation you bundle or ship.
 
 ---
+
+## Tech stack
+
+- **Desktop shell**: Tauri 2 (Rust backend + native bundle)
+- **Frontend**: React 18 + TypeScript + Vite
+- **State**: Zustand
+- **Native integration**: C++ bridge that loads SEGGER’s J-Link shared library (DLL / `.so`) in-process
+- **Packaging**: Windows (NSIS/MSI), Linux (deb/AppImage)
 
 ## Features
 
