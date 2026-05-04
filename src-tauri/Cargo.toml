@@ -1,8 +1,8 @@
 [package]
 name = "winusb-switcher-lite"
 version = "1.0.0"
-description = "WinUSB Switcher Lite — bundled J-Link USB driver helper"
-authors = ["WinUSB Switcher Lite"]
+description = "J-Link WinUSB Switcher — switch J-Link probes to WinUSB"
+authors = ["J-Link WinUSB Switcher"]
 edition = "2021"
 
 [lib]

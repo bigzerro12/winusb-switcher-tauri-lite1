@@ -12,6 +12,8 @@ struct RebootResult {
   bool attempted = false;
   bool not_supported = false;
   std::string command;
+  /// Final JLINKARM_ExecCommand output for ScheduleReboot or `reboot` (incl. callback capture).
+  std::string output;
 };
 
 int _ExecShowEmuList(JLinkARMDLL& a, std::vector<JLINKARM_EMU_CONNECT_INFO>& out_list);
@@ -26,8 +28,28 @@ bool _EnsureSelectedUsbSn(JLinkARMDLL& a, int index, const std::vector<JLINKARM_
 void _ExecSleep(unsigned ms);
 RebootResult _ExecReboot(JLinkARMDLL& a, int index, const std::vector<JLINKARM_EMU_CONNECT_INFO>& list);
 
-bool _ExecWebUSBEnable(JLinkARMDLL& a, int index, const std::vector<JLINKARM_EMU_CONNECT_INFO>& list, std::string& out_detail_for_error);
-bool _ExecWebUSBDisable(JLinkARMDLL& a, int index, const std::vector<JLINKARM_EMU_CONNECT_INFO>& list, std::string& out_detail_for_error);
+/// After `ScheduleReboot`/`reboot` and `Close`, poll until the probe accepts `OpenEx` again (no second reboot).
+void _WaitForPostRebootReconnect(
+    JLinkARMDLL& a,
+    int index,
+    const std::vector<JLINKARM_EMU_CONNECT_INFO>& list,
+    const RebootResult& rr
+);
+
+bool _ExecWebUSBEnable(
+    JLinkARMDLL& a,
+    int index,
+    const std::vector<JLINKARM_EMU_CONNECT_INFO>& list,
+    std::string& out_detail_for_error,
+    RebootResult& out_reboot
+);
+bool _ExecWebUSBDisable(
+    JLinkARMDLL& a,
+    int index,
+    const std::vector<JLINKARM_EMU_CONNECT_INFO>& list,
+    std::string& out_detail_for_error,
+    RebootResult& out_reboot
+);
 
 // Low-level helpers used by the bridge.
 const char* _OpenExCapture(JLinkARMDLL& a, std::string& cap);

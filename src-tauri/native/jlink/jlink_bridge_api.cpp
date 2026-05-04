@@ -273,6 +273,7 @@ static char* _UpdateFirmware_AssumingValidIndex(JLinkARMDLL& a, int index, const
   bool reboot_attempted = false;
   bool reboot_not_supported = false;
   std::string reboot_command;
+  std::string reboot_output;
   if (updated) {
     commander_exec::_ExecSleep(100);
     const auto rr = commander_exec::_ExecReboot(a, index, list);
@@ -280,10 +281,11 @@ static char* _UpdateFirmware_AssumingValidIndex(JLinkARMDLL& a, int index, const
     reboot_attempted = rr.attempted;
     reboot_not_supported = rr.not_supported;
     reboot_command = rr.command;
+    reboot_output = rr.output;
   }
 
   std::ostringstream oss;
-  const std::string detail =
+  std::string detail =
       env_diag.str() +
       std::string("post_update_sleep_ms=") + (updated ? "100" : "0") +
       "\npost_update_reboot_attempted=" + std::string(reboot_attempted ? "yes" : "no") +
@@ -297,6 +299,9 @@ static char* _UpdateFirmware_AssumingValidIndex(JLinkARMDLL& a, int index, const
       "\nBefore=" + fw_before_s +
       "\nAfter=" + fw_after_s +
       (out_all.empty() ? std::string() : (std::string("\n\n[DLL callback log]\n") + bridge_util::tail_text(out_all, 2000)));
+  if (reboot_command == "reboot" && !reboot_output.empty()) {
+    detail += std::string("\n\n[reboot exec output]\n") + reboot_output;
+  }
 
   oss << "{\"status\":\"" << (updated ? "updated" : "current") << "\",\"firmware\":\""
       << bridge_util::json_escape(fw_after_s.c_str()) << "\",\"beforeFirmware\":\""
@@ -312,9 +317,10 @@ static char* _UpdateFirmware_AssumingValidIndex(JLinkARMDLL& a, int index, const
 
 static char* _SwitchUsb_AssumingValidIndex(JLinkARMDLL& a, int index, const std::vector<JLINKARM_EMU_CONNECT_INFO>& list, int winusb) {
   std::string detail_for_error;
+  commander_exec::RebootResult rr{};
   const bool ok = winusb
-      ? commander_exec::_ExecWebUSBEnable(a, index, list, detail_for_error)
-      : commander_exec::_ExecWebUSBDisable(a, index, list, detail_for_error);
+      ? commander_exec::_ExecWebUSBEnable(a, index, list, detail_for_error, rr)
+      : commander_exec::_ExecWebUSBDisable(a, index, list, detail_for_error, rr);
   if (!ok) {
     set_err(detail_for_error.empty() ? std::string("switch config failed") : detail_for_error);
     std::ostringstream oss;
@@ -323,8 +329,9 @@ static char* _SwitchUsb_AssumingValidIndex(JLinkARMDLL& a, int index, const std:
     return bridge_util::dup_str(oss.str());
   }
 
+  // WinUSB path already ran ScheduleReboot/reboot inside _ExecWebUSB*; only wait for reconnect.
   commander_exec::_ExecSleep(100);
-  const auto rr = commander_exec::_ExecReboot(a, index, list);
+  commander_exec::_WaitForPostRebootReconnect(a, index, list, rr);
   commander_exec::_ExecSleep(100);
 
   std::ostringstream oss;
@@ -332,7 +339,11 @@ static char* _SwitchUsb_AssumingValidIndex(JLinkARMDLL& a, int index, const std:
       << (rr.not_supported ? "true" : "false")
       << ",\"rebootAttempted\":" << (rr.attempted ? "true" : "false")
       << ",\"rebootCommand\":\"" << bridge_util::json_escape(rr.command.c_str()) << "\""
-      << ",\"sleepMs\":100}";
+      << ",\"sleepMs\":100";
+  if (rr.command == "reboot" && !rr.output.empty()) {
+    oss << ",\"rebootLog\":\"" << bridge_util::json_escape_str(rr.output) << "\"";
+  }
+  oss << "}";
   return bridge_util::dup_str(oss.str());
 }
 

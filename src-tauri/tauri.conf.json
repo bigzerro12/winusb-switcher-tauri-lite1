@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "WinUSB Switcher Lite",
+  "productName": "J-Link WinUSB Switcher",
   "version": "1.0.0",
   "identifier": "com.winusbswitcher.lite",
   "build": {
@@ -13,7 +13,7 @@
     "withGlobalTauri": false,
     "windows": [
       {
-        "title": "WinUSB Switcher Lite",
+        "title": "J-Link WinUSB Switcher",
         "width": 770,
         "height": 530,
         "minWidth": 500,

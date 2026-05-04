@@ -8,7 +8,7 @@ export function BootstrapPending() {
       <div className="app-card flex items-center justify-center">
         <div className="w-full max-w-[520px] px-6 py-10">
           <h1 className="text-center text-base font-semibold tracking-tight text-slate-800">
-            Initializing WinUSB Switcher Lite
+            Initializing J-Link WinUSB Switcher
           </h1>
           <p className="mt-3 text-center text-[13px] leading-relaxed text-slate-600">
             Preparing the bundled J-Link runtime and probe access. This usually completes in under a minute.

@@ -1,4 +1,4 @@
-//! WinUSB Switcher Lite — Tauri application entry point.
+//! J-Link WinUSB Switcher — Tauri application entry point.
 
 mod commands;
 mod domain;

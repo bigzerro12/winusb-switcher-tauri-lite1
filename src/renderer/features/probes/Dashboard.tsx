@@ -110,7 +110,10 @@ export default function Dashboard() {
     <div className="container">
       <div className="app-card">
         <header className="app-header">
-          <h1>WinUSB Switcher</h1>
+          <h1>J-Link WinUSB Switcher</h1>
+          <p className="app-description">
+            A lightweight utility to manage and switch USB drivers of connected J-Link probes to WinUSB.
+          </p>
         </header>
 
         {error && <div className="error-message">{error}</div>}

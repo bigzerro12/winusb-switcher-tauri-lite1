@@ -340,6 +340,15 @@ void _ExecSleep(unsigned ms) {
   std::this_thread::sleep_for(std::chrono::milliseconds(ms));
 }
 
+// Maps J-Link Commander-style reboot output to rebootNotSupported (bridge JSON).
+// true  -> "Unknown command." (or ERROR: Unknown command) or "Command not supported by connected probe."
+// false -> "Reboot scheduled successfully." or neither failure pattern (treat as reboot-capable UX).
+static bool _RebootOutputMeansNotSupported(const std::string& reboot_out) {
+  if (reboot_out.find("Reboot scheduled successfully.") != std::string::npos) return false;
+  return _ContainsUnknownCommand(reboot_out) ||
+         reboot_out.find("Command not supported by connected probe.") != std::string::npos;
+}
+
 // ---------------------------------------------------------------------------
 //  Commander-style "Exec" operations
 // ---------------------------------------------------------------------------
@@ -390,6 +399,25 @@ std::string _ExecExecCommand(
   return s;
 }
 
+void _WaitForPostRebootReconnect(
+    JLinkARMDLL& a,
+    int index,
+    const std::vector<JLINKARM_EMU_CONNECT_INFO>& list,
+    const RebootResult& r
+) {
+  if (r.command.empty() || r.not_supported) return;
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(5000);
+  _ExecSleep(500);
+  while (std::chrono::steady_clock::now() < deadline) {
+    std::string tmp_err;
+    if (_ConnectToJLink(a, index, list, tmp_err)) {
+      _DisconnectFromJLink(a);
+      break;
+    }
+    _ExecSleep(50);
+  }
+}
+
 RebootResult _ExecReboot(JLinkARMDLL& a, int index, const std::vector<JLINKARM_EMU_CONNECT_INFO>& list) {
   RebootResult r;
   r.attempted = true;
@@ -409,26 +437,30 @@ RebootResult _ExecReboot(JLinkARMDLL& a, int index, const std::vector<JLINKARM_E
   }
   _DisconnectFromJLink(a);
 
-  r.not_supported = reboot_out.find("Command not supported by connected probe.") != std::string::npos;
+  r.output = reboot_out;
+  r.not_supported = _RebootOutputMeansNotSupported(reboot_out);
 
-  if (!r.command.empty() && !r.not_supported) {
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(5000);
-    _ExecSleep(500);
-    while (std::chrono::steady_clock::now() < deadline) {
-      std::string tmp_err;
-      if (_ConnectToJLink(a, index, list, tmp_err)) {
-        _DisconnectFromJLink(a);
-        break;
-      }
-      _ExecSleep(50);
-    }
+  if (r.command == "reboot" && !r.output.empty()) {
+    std::fputs("[commander_exec] Reboot exec output:\n", stderr);
+    std::fputs(r.output.c_str(), stderr);
+    if (r.output.back() != '\n') std::fputc('\n', stderr);
   }
+
+  _WaitForPostRebootReconnect(a, index, list, r);
 
   return r;
 }
 
-static bool ExecWinUSBConfig(JLinkARMDLL& a, int index, const std::vector<JLINKARM_EMU_CONNECT_INFO>& list, bool enable_winusb, std::string& out_detail_for_error) {
+static bool ExecWinUSBConfig(
+    JLinkARMDLL& a,
+    int index,
+    const std::vector<JLINKARM_EMU_CONNECT_INFO>& list,
+    bool enable_winusb,
+    std::string& out_detail_for_error,
+    RebootResult& out_reboot
+) {
   out_detail_for_error.clear();
+  out_reboot = RebootResult{};
 
   // Commander order:
   // - exec EnableAutoUpdateFW (before select/open)
@@ -488,21 +520,43 @@ static bool ExecWinUSBConfig(JLinkARMDLL& a, int index, const std::vector<JLINKA
 
   _ExecSleep(100);
   // ScheduleReboot is preferred but older firmwares only understand `reboot`.
+  out_reboot.attempted = true;
+  out_reboot.command = "ScheduleReboot";
   std::string reboot_out = _ExecOut(a, "ScheduleReboot");
   if (_ContainsUnknownCommand(reboot_out)) {
+    out_reboot.command = "reboot";
     reboot_out = _ExecOut(a, "reboot");
+  }
+  out_reboot.output = reboot_out;
+  out_reboot.not_supported = _RebootOutputMeansNotSupported(reboot_out);
+  if (out_reboot.command == "reboot" && !out_reboot.output.empty()) {
+    std::fputs("[commander_exec] Reboot exec output:\n", stderr);
+    std::fputs(out_reboot.output.c_str(), stderr);
+    if (out_reboot.output.back() != '\n') std::fputc('\n', stderr);
   }
   _ExecSleep(100);
 
   return true;
 }
 
-bool _ExecWebUSBEnable(JLinkARMDLL& a, int index, const std::vector<JLINKARM_EMU_CONNECT_INFO>& list, std::string& out_detail_for_error) {
-  return ExecWinUSBConfig(a, index, list, true, out_detail_for_error);
+bool _ExecWebUSBEnable(
+    JLinkARMDLL& a,
+    int index,
+    const std::vector<JLINKARM_EMU_CONNECT_INFO>& list,
+    std::string& out_detail_for_error,
+    RebootResult& out_reboot
+) {
+  return ExecWinUSBConfig(a, index, list, true, out_detail_for_error, out_reboot);
 }
 
-bool _ExecWebUSBDisable(JLinkARMDLL& a, int index, const std::vector<JLINKARM_EMU_CONNECT_INFO>& list, std::string& out_detail_for_error) {
-  return ExecWinUSBConfig(a, index, list, false, out_detail_for_error);
+bool _ExecWebUSBDisable(
+    JLinkARMDLL& a,
+    int index,
+    const std::vector<JLINKARM_EMU_CONNECT_INFO>& list,
+    std::string& out_detail_for_error,
+    RebootResult& out_reboot
+) {
+  return ExecWinUSBConfig(a, index, list, false, out_detail_for_error, out_reboot);
 }
 
 } // namespace commander_exec

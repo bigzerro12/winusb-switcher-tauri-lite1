@@ -590,6 +590,14 @@ fn parse_switch_usb_response(probe_index: usize, raw: &str) -> UsbDriverResult {
             reboot_attempted,
             reboot_not_supported
         );
+        if let Some(reboot_log) = v["rebootLog"].as_str() {
+            if !reboot_log.trim().is_empty() {
+                log::debug!(
+                    "[jlink][bridge] switch reboot exec output (legacy `reboot` command):\n{}",
+                    reboot_log
+                );
+            }
+        }
     }
 
     UsbDriverResult {
@@ -729,6 +737,23 @@ mod tests {
         assert!(r.success);
         assert!(r.error.is_none());
         assert!(r.detail.is_none());
+        assert!(!r.reboot_not_supported);
+    }
+
+    #[test]
+    fn switch_usb_response_success_accepts_optional_reboot_log() {
+        let raw = r#"{
+            "success": true,
+            "error": "",
+            "detail": "",
+            "rebootAttempted": true,
+            "rebootNotSupported": false,
+            "rebootCommand": "reboot",
+            "rebootLog": "Reboot scheduled successfully.\n",
+            "sleepMs": 100
+        }"#;
+        let r = parse_switch_usb_response(0, raw);
+        assert!(r.success);
         assert!(!r.reboot_not_supported);
     }
 
