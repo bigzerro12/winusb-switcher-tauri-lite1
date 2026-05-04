@@ -29,6 +29,8 @@ private:
 #ifdef _WIN32
 std::string get_current_directory_a();
 bool file_exists_a(const std::string& path);
+/// Strip `\\?\` extended-length prefix for logs and alternate path checks (SEGGER path quirks).
+std::string windows_path_for_diagnostics(const std::string& path_utf8);
 #endif
 
 } // namespace runtime_dirs

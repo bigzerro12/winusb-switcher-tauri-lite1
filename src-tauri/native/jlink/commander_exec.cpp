@@ -472,6 +472,15 @@ static bool ExecWinUSBConfig(
     out_detail_for_error = conn_err;
     return false;
   }
+  {
+    char fw_snap[512] = {};
+    a.JLINKARM_GetFirmwareString(fw_snap, static_cast<int>(sizeof(fw_snap) - 1));
+    std::fprintf(
+        stderr,
+        "[commander_exec] ExecWinUSBConfig [after_EnableAutoUpdateFW_open] firmware=%s\n",
+        fw_snap
+    );
+  }
   _SCOPED_DISCONNECT _close(a);
   _close.close = true;
 
@@ -518,6 +527,16 @@ static bool ExecWinUSBConfig(
   }
   } // fallback path
 
+  {
+    char fw_snap[512] = {};
+    a.JLINKARM_GetFirmwareString(fw_snap, static_cast<int>(sizeof(fw_snap) - 1));
+    std::fprintf(
+        stderr,
+        "[commander_exec] ExecWinUSBConfig [before_ScheduleReboot] firmware=%s\n",
+        fw_snap
+    );
+  }
+
   _ExecSleep(100);
   // ScheduleReboot is preferred but older firmwares only understand `reboot`.
   out_reboot.attempted = true;
@@ -533,6 +552,15 @@ static bool ExecWinUSBConfig(
     std::fputs("[commander_exec] Reboot exec output:\n", stderr);
     std::fputs(out_reboot.output.c_str(), stderr);
     if (out_reboot.output.back() != '\n') std::fputc('\n', stderr);
+  }
+  {
+    char fw_snap[512] = {};
+    a.JLINKARM_GetFirmwareString(fw_snap, static_cast<int>(sizeof(fw_snap) - 1));
+    std::fprintf(
+        stderr,
+        "[commander_exec] ExecWinUSBConfig [after_ScheduleReboot_still_connected] firmware=%s\n",
+        fw_snap
+    );
   }
   _ExecSleep(100);
 

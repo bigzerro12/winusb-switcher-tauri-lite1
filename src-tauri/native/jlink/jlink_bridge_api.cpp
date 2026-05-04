@@ -5,6 +5,7 @@
 #include "common/bridge_util.h"
 #include "common/runtime_dirs.h"
 
+#include <cstdio>
 #include <cstdlib>
 #include <sstream>
 #include <string>
@@ -45,6 +46,15 @@ int jlink_bridge_load(const char* dll_path_utf8) {
   if (lp.empty()) lp = dll_path_utf8;
   g_dll_dir = runtime_dirs::dirname_utf8(lp.c_str());
   runtime_dirs::apply_jlink_runtime_dirs(g_dll_dir);
+#ifdef _WIN32
+  {
+    const std::string norm = runtime_dirs::windows_path_for_diagnostics(g_dll_dir);
+    std::fprintf(stderr, "[jlink_bridge] loaded J-Link DLL; dll_dir=%s\n", g_dll_dir.c_str());
+    if (norm != g_dll_dir) {
+      std::fprintf(stderr, "[jlink_bridge] dll_dir without \\?\\ prefix=%s\n", norm.c_str());
+    }
+  }
+#endif
   return 0;
 }
 
@@ -217,10 +227,16 @@ static char* _UpdateFirmware_AssumingValidIndex(JLinkARMDLL& a, int index, const
     const std::string cwd_now = runtime_dirs::get_current_directory_a();
     const std::string bin_name = commander_exec::_GuessFirmwareBinName(sel);
     std::string fw_path = g_dll_dir + "\\Firmwares\\" + bin_name;
+    const std::string dll_norm = runtime_dirs::windows_path_for_diagnostics(g_dll_dir);
+    const std::string fw_path_norm = dll_norm + "\\Firmwares\\" + bin_name;
     env_diag << "dll_dir=" << g_dll_dir << "\n"
+             << "dll_dir_normalized=" << dll_norm << "\n"
              << "cwd_during_update=" << cwd_now << "\n"
              << "expected_firmware_file=" << fw_path << "\n"
-             << "firmware_file_exists=" << (runtime_dirs::file_exists_a(fw_path) ? "yes" : "no") << "\n";
+             << "expected_firmware_file_normalized=" << fw_path_norm << "\n"
+             << "firmware_file_exists=" << (runtime_dirs::file_exists_a(fw_path) ? "yes" : "no") << "\n"
+             << "firmware_file_exists_normalized_path="
+             << (runtime_dirs::file_exists_a(fw_path_norm) ? "yes" : "no") << "\n";
   }
 #endif
 
@@ -303,6 +319,16 @@ static char* _UpdateFirmware_AssumingValidIndex(JLinkARMDLL& a, int index, const
     detail += std::string("\n\n[reboot exec output]\n") + reboot_output;
   }
 
+#ifdef _WIN32
+  if (!updated && !out_all.empty()) {
+    std::fprintf(
+        stderr,
+        "[jlink_bridge] update_firmware: status=current (same firmware string). DLL callback tail:\n%s\n",
+        bridge_util::tail_text(out_all, 4000).c_str()
+    );
+  }
+#endif
+
   oss << "{\"status\":\"" << (updated ? "updated" : "current") << "\",\"firmware\":\""
       << bridge_util::json_escape(fw_after_s.c_str()) << "\",\"beforeFirmware\":\""
       << bridge_util::json_escape(fw_before_s.c_str()) << "\",\"serialNumber\":\""
@@ -340,7 +366,7 @@ static char* _SwitchUsb_AssumingValidIndex(JLinkARMDLL& a, int index, const std:
       << ",\"rebootAttempted\":" << (rr.attempted ? "true" : "false")
       << ",\"rebootCommand\":\"" << bridge_util::json_escape(rr.command.c_str()) << "\""
       << ",\"sleepMs\":100";
-  if (rr.command == "reboot" && !rr.output.empty()) {
+  if (!rr.output.empty()) {
     oss << ",\"rebootLog\":\"" << bridge_util::json_escape_str(rr.output) << "\"";
   }
   oss << "}";
