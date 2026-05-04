@@ -36,10 +36,29 @@ int jlink_bridge_load(const char* dll_path_utf8) {
     g_api.reset();
     return -1;
   }
-  if (!g_api->Load(dll_path_utf8)) {
-    set_err(g_api->lastError().empty() ? std::string("Load failed") : g_api->lastError());
-    g_api.reset();
-    return -1;
+  std::string load_path = dll_path_utf8;
+#ifdef _WIN32
+  load_path = runtime_dirs::windows_path_for_diagnostics(load_path);
+#endif
+
+  // Prefer a normalized Win32 path so SEGGER's internal firmware lookup
+  // logic behaves consistently between dev and packaged runtime layouts.
+  if (!g_api->Load(load_path)) {
+#ifdef _WIN32
+    // Keep a fallback for extremely long paths that might require \\?\.
+    if (load_path != dll_path_utf8 && g_api->Load(dll_path_utf8)) {
+      std::fprintf(
+          stderr,
+          "[jlink_bridge] loaded J-Link DLL via verbatim path fallback: %s\n",
+          dll_path_utf8
+      );
+    } else
+#endif
+    {
+      set_err(g_api->lastError().empty() ? std::string("Load failed") : g_api->lastError());
+      g_api.reset();
+      return -1;
+    }
   }
 
   std::string lp = g_api->loadedPath();
