@@ -45,15 +45,12 @@ int jlink_bridge_load(const char* dll_path_utf8) {
   std::string lp = g_api->loadedPath();
   if (lp.empty()) lp = dll_path_utf8;
   g_dll_dir = runtime_dirs::dirname_utf8(lp.c_str());
+#ifdef _WIN32
+  g_dll_dir = runtime_dirs::windows_path_for_diagnostics(g_dll_dir);
+#endif
   runtime_dirs::apply_jlink_runtime_dirs(g_dll_dir);
 #ifdef _WIN32
-  {
-    const std::string norm = runtime_dirs::windows_path_for_diagnostics(g_dll_dir);
-    std::fprintf(stderr, "[jlink_bridge] loaded J-Link DLL; dll_dir=%s\n", g_dll_dir.c_str());
-    if (norm != g_dll_dir) {
-      std::fprintf(stderr, "[jlink_bridge] dll_dir without \\?\\ prefix=%s\n", norm.c_str());
-    }
-  }
+  std::fprintf(stderr, "[jlink_bridge] loaded J-Link DLL; dll_dir=%s\n", g_dll_dir.c_str());
 #endif
   return 0;
 }
