@@ -147,9 +147,12 @@ fn ensure_linux_udev_rules(app: &AppHandle) -> AppResult<()> {
     use std::io::Write;
     use std::os::unix::fs::PermissionsExt;
     use std::process::Command;
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     const RULES_DST: &str = "/etc/udev/rules.d/99-jlink.rules";
     const RULES_BUNDLED: &str = "resources/segger-99-jlink.rules";
+    const ATTEMPT_MARKER_NAME: &str = "udev-99-jlink-install-attempt.txt";
+    const ATTEMPT_COOLDOWN: Duration = Duration::from_secs(24 * 60 * 60);
 
     let res_dir = app
         .path()
@@ -177,6 +180,28 @@ fn ensure_linux_udev_rules(app: &AppHandle) -> AppResult<()> {
         );
     }
 
+    // If the user declined the privilege prompt (or pkexec was unavailable), don't reprompt on every launch.
+    // We'll try again after a short cooldown, and of course we stop prompting entirely once rules match.
+    let attempt_marker_path = app
+        .path()
+        .app_local_data_dir()
+        .map(|p| p.join(ATTEMPT_MARKER_NAME))
+        .ok();
+    if let Some(marker) = attempt_marker_path.as_ref() {
+        if let Ok(meta) = fs::metadata(marker) {
+            if let Ok(modified) = meta.modified() {
+                if let Ok(age) = SystemTime::now().duration_since(modified) {
+                    if age < ATTEMPT_COOLDOWN {
+                        log::info!(
+                            "[bootstrap] udev rules not installed yet; skipping pkexec retry (cooldown active)"
+                        );
+                        return Ok(());
+                    }
+                }
+            }
+        }
+    }
+
     // Use securely created temp files so local users cannot race path creation in /tmp.
     let mut tmp_file = tempfile::Builder::new()
         .prefix("winusb-switcher-lite-99-jlink-")
@@ -187,6 +212,10 @@ fn ensure_linux_udev_rules(app: &AppHandle) -> AppResult<()> {
         .as_file_mut()
         .write_all(&bytes)
         .map_err(|e| AppError::Internal(format!("write temp rules file: {}", e)))?;
+    tmp_file
+        .as_file()
+        .sync_all()
+        .map_err(|e| AppError::Internal(format!("sync temp rules file: {}", e)))?;
 
     // If we can install directly (e.g. running as root), do so; otherwise attempt pkexec.
     let install_direct = || -> std::io::Result<()> {
@@ -227,29 +256,60 @@ udevadm trigger
 "#,
         )
         .map_err(|e| AppError::Internal(format!("write temp helper script: {}", e)))?;
-    fs::set_permissions(helper_file.path(), fs::Permissions::from_mode(0o700))
+    helper_file
+        .as_file()
+        .sync_all()
+        .map_err(|e| AppError::Internal(format!("sync temp helper script: {}", e)))?;
+
+    // On Linux, executing a file that is still open for writing can fail with ETXTBSY ("Text file busy").
+    // Close the file handle before calling pkexec.
+    let helper_path = helper_file.into_temp_path();
+    fs::set_permissions(&helper_path, fs::Permissions::from_mode(0o700))
         .map_err(|e| AppError::Internal(format!("chmod helper script: {}", e)))?;
 
     let status = Command::new("pkexec")
-        .arg(helper_file.path())
+        .arg(&helper_path)
         .arg(tmp_file.path())
         .status();
 
     match status {
         Ok(s) if s.success() => {
             log::info!("[bootstrap] pkexec installed udev rules to {}", RULES_DST);
+            if let Some(marker) = attempt_marker_path.as_ref() {
+                let _ = fs::remove_file(marker);
+            }
         }
         Ok(s) => {
             log::warn!(
                 "[bootstrap] pkexec did not install udev rules (exit {:?}). USB access may fail until rules are installed.",
                 s.code()
             );
+            if let Some(marker) = attempt_marker_path.as_ref() {
+                if let Some(parent) = marker.parent() {
+                    let _ = fs::create_dir_all(parent);
+                }
+                let now = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+                let _ = fs::write(marker, format!("ts={}\n", now));
+            }
         }
         Err(e) => {
             log::warn!(
                 "[bootstrap] pkexec unavailable/failed: {}. USB access may fail until rules are installed.",
                 e
             );
+            if let Some(marker) = attempt_marker_path.as_ref() {
+                if let Some(parent) = marker.parent() {
+                    let _ = fs::create_dir_all(parent);
+                }
+                let now = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+                let _ = fs::write(marker, format!("ts={}\n", now));
+            }
         }
     }
     Ok(())
