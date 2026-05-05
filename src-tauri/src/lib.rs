@@ -27,18 +27,6 @@ pub fn run() {
         .manage(AppState::new())
         .plugin(log_builder.build());
 
-    #[cfg(debug_assertions)]
-    let builder = builder.invoke_handler(tauri::generate_handler![
-        commands::prepare_bundled_jlink,
-        commands::detect_and_scan,
-        commands::scan_probes,
-        commands::jlink_exec_command,
-        commands::switch_usb_driver,
-        commands::get_arch_info,
-        commands::get_jlink_diagnostics,
-    ]);
-
-    #[cfg(not(debug_assertions))]
     let builder = builder.invoke_handler(tauri::generate_handler![
             commands::prepare_bundled_jlink,
             commands::detect_and_scan,

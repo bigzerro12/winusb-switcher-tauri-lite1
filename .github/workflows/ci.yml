@@ -21,6 +21,8 @@ jobs:
           cache-dependency-path: yarn.lock
       - name: Install dependencies
         run: yarn install --frozen-lockfile
+      - name: Validate version sync
+        run: yarn check:version-sync
       - name: ESLint
         run: yarn lint
       - name: Typecheck and build frontend
@@ -53,11 +55,11 @@ jobs:
         with:
           components: clippy
       - name: Cargo clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --locked --all-targets -- -D warnings
       - name: Cargo test
-        run: cargo test --no-fail-fast
+        run: cargo test --locked --no-fail-fast
       - name: Cargo build (release)
-        run: cargo build --release
+        run: cargo build --locked --release
 
   tauri-package-smoke:
     runs-on: ubuntu-latest
@@ -87,3 +89,25 @@ jobs:
         run: yarn build
       - name: Build Tauri package (Linux deb smoke)
         run: yarn tauri:build -- --config src-tauri/tauri.conf.ci-prefrontend.json --bundles deb
+
+  tauri-package-smoke-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: yarn
+          cache-dependency-path: yarn.lock
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+      - name: Build frontend
+        run: yarn build
+      - name: Build Tauri package (Windows x64 smoke)
+        run: yarn tauri:build -- --target x86_64-pc-windows-msvc

@@ -14,8 +14,8 @@
     "windows": [
       {
         "title": "J-Link WinUSB Switcher",
-        "width": 770,
-        "height": 530,
+        "width": 780,
+        "height": 600,
         "minWidth": 500,
         "minHeight": 400,
         "resizable": true,

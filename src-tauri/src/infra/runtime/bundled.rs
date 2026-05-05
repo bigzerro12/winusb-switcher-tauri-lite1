@@ -145,6 +145,7 @@ pub fn prepare(app: &AppHandle) -> AppResult<JLinkRuntime> {
 fn ensure_linux_udev_rules(app: &AppHandle) -> AppResult<()> {
     use std::fs;
     use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
     use std::process::Command;
 
     const RULES_DST: &str = "/etc/udev/rules.d/99-jlink.rules";
@@ -177,7 +178,12 @@ fn ensure_linux_udev_rules(app: &AppHandle) -> AppResult<()> {
     ));
     let bytes = fs::read(&bundled_rules)?;
     {
-        let mut f = fs::File::create(&tmp)?;
+        let mut f = fs::OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .mode(0o600)
+            .open(&tmp)?;
         f.write_all(&bytes)?;
     }
 
@@ -205,18 +211,22 @@ fn ensure_linux_udev_rules(app: &AppHandle) -> AppResult<()> {
         RULES_DST
     );
     let status = Command::new("pkexec")
-        .arg("sh")
-        .arg("-c")
-        .arg(
-            "install -m 0644 \"$1\" /etc/udev/rules.d/99-jlink.rules && udevadm control --reload-rules && udevadm trigger",
-        )
-        .arg("sh")
+        .arg("install")
+        .arg("-m")
+        .arg("0644")
         .arg(tmp.to_string_lossy().as_ref())
+        .arg(RULES_DST)
         .status();
 
     match status {
         Ok(s) if s.success() => {
             log::info!("[bootstrap] pkexec installed udev rules to {}", RULES_DST);
+            let _ = Command::new("pkexec")
+                .args(["udevadm", "control", "--reload-rules"])
+                .status();
+            let _ = Command::new("pkexec")
+                .args(["udevadm", "trigger"])
+                .status();
         }
         Ok(s) => {
             log::warn!(

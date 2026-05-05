@@ -30,7 +30,6 @@ unsafe extern "C" {
     fn jlink_bridge_free_string(s: *mut c_char);
     fn jlink_bridge_list_probes_json() -> *mut c_char;
     fn jlink_bridge_probe_firmware(index: i32) -> *mut c_char;
-    fn jlink_bridge_exec_command(index: i32, exec_cmd_utf8: *const c_char) -> *mut c_char;
     fn jlink_bridge_update_firmware(index: i32) -> *mut c_char;
     fn jlink_bridge_update_firmware_by_sn(serial_number: u32, retries: i32, retry_delay_ms: u32) -> *mut c_char;
     fn jlink_bridge_switch_usb_driver(index: i32, winusb: i32) -> *mut c_char;
@@ -117,15 +116,6 @@ pub fn probe_open_details(index: usize) -> Result<ProbeOpenDetails, String> {
 }
 
 #[cfg(any(target_os = "windows", target_os = "linux"))]
-pub fn exec_command(index: usize, exec_cmd: &str) -> Result<String, String> {
-    let s = CString::new(exec_cmd).map_err(|e| e.to_string())?;
-    unsafe {
-        let p = jlink_bridge_exec_command(index as i32, s.as_ptr());
-        take_c_str(p).ok_or_else(|| c_err_msg())
-    }
-}
-
-#[cfg(any(target_os = "windows", target_os = "linux"))]
 pub fn update_firmware_json(index: usize) -> Result<String, String> {
     unsafe {
         let p = jlink_bridge_update_firmware(index as i32);
@@ -202,11 +192,6 @@ pub fn probe_open_details(_index: usize) -> Result<ProbeOpenDetails, String> {
 }
 
 #[cfg(not(any(target_os = "windows", target_os = "linux")))]
-pub fn exec_command(_index: usize, _exec_cmd: &str) -> Result<String, String> {
-    Err("Native J-Link bridge is only available on Windows and Linux.".to_string())
-}
-
-#[cfg(not(any(target_os = "windows", target_os = "linux")))]
 pub fn update_firmware_json(_index: usize) -> Result<String, String> {
     Err("Native J-Link bridge is only available on Windows and Linux.".to_string())
 }
@@ -263,10 +248,6 @@ pub mod bridge {
 
     pub fn probe_open_details(index: usize) -> Result<super::ProbeOpenDetails, BridgeError> {
         super::probe_open_details(index).map_err(BridgeError::Failed)
-    }
-
-    pub fn exec_command(index: usize, cmd: &str) -> Result<String, BridgeError> {
-        super::exec_command(index, cmd).map_err(BridgeError::Failed)
     }
 
     pub fn update_firmware_json(index: usize) -> Result<String, BridgeError> {

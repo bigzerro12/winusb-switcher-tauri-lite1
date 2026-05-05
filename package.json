@@ -9,6 +9,7 @@
   },
   "scripts": {
     "dev": "vite",
+    "check:version-sync": "node scripts/check-version-sync.mjs",
     "build": "tsc && vite build",
     "lint": "eslint \"src/**/*.{ts,tsx}\"",
     "stage-jlink": "node scripts/stage-jlink-for-build.mjs",
