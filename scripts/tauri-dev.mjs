@@ -14,12 +14,12 @@ import { platform } from "node:os";
 import { resolve } from "node:path";
 
 const PREFERRED = 5173;
-const APP_EXE_BASENAME = "winusb-switcher-lite";
+const APP_EXE_BASENAME = "jlink-winusb-switcher-lite";
 
 /**
  * Kill any previously-launched dev build of this app. Cargo can't overwrite
  * the `.exe` on Windows while a prior run is still alive, which produces:
- *   error: failed to remove file `...\target\debug\winusb-switcher-lite.exe`
+ *   error: failed to remove file `...\target\debug\jlink-winusb-switcher-lite.exe`
  *   Caused by: Access is denied. (os error 5)
  */
 function killStaleAppProcesses() {

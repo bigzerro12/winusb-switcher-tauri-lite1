@@ -1,5 +1,5 @@
 [package]
-name = "winusb-switcher-lite"
+name = "jlink-winusb-switcher-lite"
 version = "1.0.0"
 description = "J-Link WinUSB Switcher — switch J-Link probes to WinUSB"
 authors = ["J-Link WinUSB Switcher"]

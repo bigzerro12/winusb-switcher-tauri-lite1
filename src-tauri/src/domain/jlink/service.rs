@@ -33,6 +33,10 @@ fn redact_serial_for_logs(serial: &str) -> String {
     format!("***{}", &trimmed[trimmed.len() - 4..])
 }
 
+fn redact_serial_u32_for_logs(serial_number: u32) -> String {
+    redact_serial_for_logs(&serial_number.to_string())
+}
+
 fn switch_with_best_effort_firmware_update<FU, FS>(
     target_label: &str,
     update: FU,
@@ -248,12 +252,13 @@ fn update_firmware_via_bridge_by_sn(
     retries: i32,
     retry_delay_ms: u32,
 ) -> FirmwareUpdateResult {
+    let target_label = format!("sn={}", redact_serial_u32_for_logs(serial_number));
     match bridge::update_firmware_json_by_sn(serial_number, retries, retry_delay_ms) {
-        Ok(raw) => parse_firmware_update_response(serial_number as usize, &raw),
+        Ok(raw) => parse_firmware_update_response(&target_label, &raw),
         Err(e) => {
             log::warn!(
                 "[jlink][bridge] update_firmware_json_by_sn failed sn={}: {}",
-                serial_number,
+                redact_serial_u32_for_logs(serial_number),
                 e
             );
             FirmwareUpdateResult::Failed {
@@ -269,9 +274,10 @@ fn switch_usb_via_bridge_by_sn(
     retries: i32,
     retry_delay_ms: u32,
 ) -> UsbDriverResult {
+    let target_label = format!("sn={}", redact_serial_u32_for_logs(serial_number));
     let winusb = matches!(mode, UsbDriverMode::WinUsb);
     match bridge::switch_usb_json_by_sn(serial_number, winusb, retries, retry_delay_ms) {
-        Ok(raw) => parse_switch_usb_response(serial_number as usize, &raw),
+        Ok(raw) => parse_switch_usb_response(&target_label, &raw),
         Err(e) => UsbDriverResult {
             success: false,
             error: Some(format!(
@@ -488,13 +494,14 @@ fn scan_probes_via_bridge() -> AppResult<Vec<Probe>> {
 }
 
 fn update_firmware_via_bridge(probe_index: usize) -> FirmwareUpdateResult {
+    let target_label = format!("probe[{}]", probe_index);
     log::info!(
         "[jlink] Updating firmware for probe[{}] via native J-Link bridge...",
         probe_index
     );
 
     match bridge::update_firmware_json(probe_index) {
-        Ok(raw) => parse_firmware_update_response(probe_index, &raw),
+        Ok(raw) => parse_firmware_update_response(&target_label, &raw),
         Err(e) => {
             log::warn!("[jlink][bridge] update_firmware_json failed: {}", e);
             FirmwareUpdateResult::Failed {
@@ -507,7 +514,7 @@ fn update_firmware_via_bridge(probe_index: usize) -> FirmwareUpdateResult {
 /// Pure JSON-to-domain mapper for the bridge's `update_firmware` response.
 ///
 /// Separated from the bridge call so it can be unit-tested with canned payloads.
-fn parse_firmware_update_response(probe_index: usize, raw: &str) -> FirmwareUpdateResult {
+fn parse_firmware_update_response(target_label: &str, raw: &str) -> FirmwareUpdateResult {
     let v: serde_json::Value = match serde_json::from_str(raw) {
         Ok(v) => v,
         Err(e) => {
@@ -542,16 +549,16 @@ fn parse_firmware_update_response(probe_index: usize, raw: &str) -> FirmwareUpda
                 .unwrap_or("firmware update failed")
                 .to_string();
             log::warn!(
-                "[jlink][bridge] firmware update reported failed (probe[{}]): {}",
-                probe_index,
+                "[jlink][bridge] firmware update reported failed ({}): {}",
+                target_label,
                 msg
             );
             FirmwareUpdateResult::Failed { error: msg }
         }
         "updated" => {
             log::info!(
-                "[jlink] Probe[{}] firmware updated; post-update sleep={}ms reboot_attempted={} reboot_cmd={} reboot_not_supported={}",
-                probe_index,
+                "[jlink] {} firmware updated; post-update sleep={}ms reboot_attempted={} reboot_cmd={} reboot_not_supported={}",
+                target_label,
                 sleep_ms,
                 reboot_attempted,
                 if reboot_command.is_empty() { "(none)" } else { reboot_command },
@@ -561,8 +568,8 @@ fn parse_firmware_update_response(probe_index: usize, raw: &str) -> FirmwareUpda
         }
         _ => {
             log::info!(
-                "[jlink] Probe[{}] firmware current; post-update sleep={}ms reboot_attempted={} (skipped)",
-                probe_index,
+                "[jlink] {} firmware current; post-update sleep={}ms reboot_attempted={} (skipped)",
+                target_label,
                 sleep_ms,
                 reboot_attempted
             );
@@ -574,9 +581,10 @@ fn parse_firmware_update_response(probe_index: usize, raw: &str) -> FirmwareUpda
 }
 
 fn switch_usb_via_bridge(probe_index: usize, mode: UsbDriverMode) -> UsbDriverResult {
+    let target_label = format!("probe[{}]", probe_index);
     let winusb = matches!(mode, UsbDriverMode::WinUsb);
     match bridge::switch_usb_json(probe_index, winusb) {
-        Ok(raw) => parse_switch_usb_response(probe_index, &raw),
+        Ok(raw) => parse_switch_usb_response(&target_label, &raw),
         Err(e) => {
             log::warn!("[jlink][bridge] switch_usb_json failed: {}", e);
             UsbDriverResult {
@@ -596,7 +604,7 @@ fn switch_usb_via_bridge(probe_index: usize, mode: UsbDriverMode) -> UsbDriverRe
 /// Pure JSON-to-domain mapper for the bridge's `switch_usb_driver` response.
 ///
 /// Separated from the bridge call so it can be unit-tested with canned payloads.
-fn parse_switch_usb_response(probe_index: usize, raw: &str) -> UsbDriverResult {
+fn parse_switch_usb_response(target_label: &str, raw: &str) -> UsbDriverResult {
     let v: serde_json::Value = match serde_json::from_str(raw) {
         Ok(v) => v,
         Err(e) => {
@@ -639,8 +647,8 @@ fn parse_switch_usb_response(probe_index: usize, raw: &str) -> UsbDriverResult {
             reboot_command
         };
         log::info!(
-            "[jlink] switch_usb_driver probe[{}] ok; post-switch: Sleep(100) -> Reboot({}) -> Sleep(100) (attempted={}, not_supported={})",
-            probe_index,
+            "[jlink] switch_usb_driver {} ok; post-switch: Sleep(100) -> Reboot({}) -> Sleep(100) (attempted={}, not_supported={})",
+            target_label,
             cmd,
             reboot_attempted,
             reboot_not_supported
@@ -726,7 +734,7 @@ mod tests {
             "rebootCommand": "rnh",
             "sleepMs": 100
         }"#;
-        match parse_firmware_update_response(0, raw) {
+        match parse_firmware_update_response("probe[0]", raw) {
             FirmwareUpdateResult::Updated { firmware } => {
                 assert_eq!(firmware, "Sep 29 2020");
             }
@@ -742,7 +750,7 @@ mod tests {
             "rebootAttempted": false,
             "sleepMs": 0
         }"#;
-        match parse_firmware_update_response(1, raw) {
+        match parse_firmware_update_response("probe[1]", raw) {
             FirmwareUpdateResult::Current { firmware } => {
                 assert_eq!(firmware, "n/a");
             }
@@ -757,7 +765,7 @@ mod tests {
             "firmware": "",
             "error": "OpenEx timeout"
         }"#;
-        match parse_firmware_update_response(2, raw) {
+        match parse_firmware_update_response("probe[2]", raw) {
             FirmwareUpdateResult::Failed { error } => {
                 assert_eq!(error, "OpenEx timeout");
             }
@@ -767,7 +775,7 @@ mod tests {
 
     #[test]
     fn firmware_update_response_invalid_json_reports_failed() {
-        match parse_firmware_update_response(0, "not json") {
+        match parse_firmware_update_response("probe[0]", "not json") {
             FirmwareUpdateResult::Failed { error } => {
                 assert!(!error.is_empty());
             }
@@ -788,7 +796,7 @@ mod tests {
             "rebootCommand": "rnh",
             "sleepMs": 100
         }"#;
-        let r = parse_switch_usb_response(0, raw);
+        let r = parse_switch_usb_response("probe[0]", raw);
         assert!(r.success);
         assert!(r.error.is_none());
         assert!(r.detail.is_none());
@@ -807,7 +815,7 @@ mod tests {
             "rebootLog": "Reboot scheduled successfully.\n",
             "sleepMs": 100
         }"#;
-        let r = parse_switch_usb_response(0, raw);
+        let r = parse_switch_usb_response("probe[0]", raw);
         assert!(r.success);
         assert!(!r.reboot_not_supported);
     }
@@ -820,7 +828,7 @@ mod tests {
             "detail": "could not write config word",
             "rebootNotSupported": true
         }"#;
-        let r = parse_switch_usb_response(0, raw);
+        let r = parse_switch_usb_response("probe[0]", raw);
         assert!(!r.success);
         assert_eq!(r.error.as_deref(), Some("Failed to switch probe config."));
         assert_eq!(r.detail.as_deref(), Some("could not write config word"));
@@ -829,7 +837,7 @@ mod tests {
 
     #[test]
     fn switch_usb_response_invalid_json_returns_failure_with_error_context() {
-        let r = parse_switch_usb_response(0, "not json");
+        let r = parse_switch_usb_response("probe[0]", "not json");
         assert!(!r.success);
         assert!(r.error.is_some());
     }

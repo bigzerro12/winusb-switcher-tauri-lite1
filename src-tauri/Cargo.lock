@@ -1731,6 +1731,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "jlink-winusb-switcher-lite"
+version = "1.0.0"
+dependencies = [
+ "cc",
+ "ctrlc",
+ "log",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-log",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+]
+
+[[package]]
 name = "jni"
 version = "0.21.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5045,23 +5062,6 @@ checksum = "cb5a765337c50e9ec252c2069be9bf91c7df47afb103b642ba3a53bf8101be97"
 dependencies = [
  "cfg-if",
  "windows-sys 0.59.0",
-]
-
-[[package]]
-name = "winusb-switcher-lite"
-version = "1.0.0"
-dependencies = [
- "cc",
- "ctrlc",
- "log",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-log",
- "tempfile",
- "thiserror 1.0.69",
- "tokio",
 ]
 
 [[package]]

@@ -11,6 +11,8 @@ use std::time::Duration;
 
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 const SIDECAR_CALL_TIMEOUT: Duration = Duration::from_secs(8);
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+const SIDECAR_LONG_CALL_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
@@ -118,6 +120,57 @@ fn sidecar_slot() -> &'static Mutex<Option<SidecarProcess>> {
 }
 
 #[cfg(any(target_os = "windows", target_os = "linux"))]
+fn loaded_lib_path_slot() -> &'static Mutex<Option<String>> {
+    static SLOT: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+    SLOT.get_or_init(|| Mutex::new(None))
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+fn remember_loaded_lib_path(path: &str) {
+    if let Ok(mut slot) = loaded_lib_path_slot().lock() {
+        *slot = Some(path.to_string());
+    }
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+fn last_loaded_lib_path() -> Option<String> {
+    loaded_lib_path_slot()
+        .lock()
+        .ok()
+        .and_then(|slot| slot.as_ref().cloned())
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+fn maybe_preload_sidecar(proc_: &mut SidecarProcess, current_op: &str) -> Result<(), String> {
+    if current_op == op::LOAD {
+        return Ok(());
+    }
+    let Some(path) = last_loaded_lib_path() else {
+        return Ok(());
+    };
+    log::debug!(
+        "[sidecar] preloading bridge library after respawn: {}",
+        path
+    );
+    let preload_req = RpcRequest {
+        op: op::LOAD.to_string(),
+        args: serde_json::json!({ "path": path }),
+    };
+    proc_.call(&preload_req).map(|_| ())
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+fn timeout_for_op(current_op: &str) -> Duration {
+    match current_op {
+        op::UPDATE_FIRMWARE_JSON
+        | op::UPDATE_FIRMWARE_JSON_BY_SN
+        | op::SWITCH_USB_JSON
+        | op::SWITCH_USB_JSON_BY_SN => SIDECAR_LONG_CALL_TIMEOUT,
+        _ => SIDECAR_CALL_TIMEOUT,
+    }
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 pub fn call(op: &str, args: serde_json::Value) -> Result<serde_json::Value, String> {
     let req = RpcRequest {
         op: op.to_string(),
@@ -131,19 +184,27 @@ pub fn call(op: &str, args: serde_json::Value) -> Result<serde_json::Value, Stri
                 .lock()
                 .map_err(|_| "sidecar mutex poisoned".to_string())?;
             if slot.is_none() {
-                *slot = Some(SidecarProcess::spawn()?);
+                let mut spawned = SidecarProcess::spawn()?;
+                maybe_preload_sidecar(&mut spawned, op)?;
+                *slot = Some(spawned);
             }
             slot.take()
                 .ok_or_else(|| "sidecar unavailable".to_string())?
         };
 
         let pid = proc_.pid();
-        match call_with_timeout(proc_, req.clone(), SIDECAR_CALL_TIMEOUT) {
+        let timeout = timeout_for_op(op);
+        match call_with_timeout(proc_, req.clone(), timeout) {
             Ok((returned_proc, Ok(v))) => {
                 let mut slot = sidecar_slot()
                     .lock()
                     .map_err(|_| "sidecar mutex poisoned".to_string())?;
                 *slot = Some(returned_proc);
+                if op == op::LOAD {
+                    if let Some(path) = req.args["path"].as_str() {
+                        remember_loaded_lib_path(path);
+                    }
+                }
                 log::trace!("[sidecar] op={} attempt={} ok", op, attempt + 1);
                 return Ok(v);
             }
@@ -208,14 +269,58 @@ fn call_with_timeout(
 
 #[cfg(all(any(target_os = "windows", target_os = "linux"), target_os = "windows"))]
 fn kill_sidecar_process(pid: u32) {
-    let _ = Command::new("taskkill")
+    let status = Command::new("taskkill")
         .args(["/PID", &pid.to_string(), "/T", "/F"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .status();
+    match status {
+        Ok(s) if s.success() => {
+            log::debug!("[sidecar] taskkill pid={} succeeded", pid);
+        }
+        Ok(s) => {
+            log::debug!(
+                "[sidecar] taskkill pid={} non-success exit={:?} (process may have already exited)",
+                pid,
+                s.code()
+            );
+        }
+        Err(e) => {
+            log::debug!(
+                "[sidecar] taskkill pid={} failed to execute: {} (continuing)",
+                pid,
+                e
+            );
+        }
+    }
 }
 
 #[cfg(all(any(target_os = "windows", target_os = "linux"), target_os = "linux"))]
 fn kill_sidecar_process(pid: u32) {
-    let _ = Command::new("kill").args(["-9", &pid.to_string()]).status();
+    let status = Command::new("kill")
+        .args(["-9", &pid.to_string()])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+    match status {
+        Ok(s) if s.success() => {
+            log::debug!("[sidecar] kill -9 pid={} succeeded", pid);
+        }
+        Ok(s) => {
+            log::debug!(
+                "[sidecar] kill -9 pid={} non-success exit={:?} (process may have already exited)",
+                pid,
+                s.code()
+            );
+        }
+        Err(e) => {
+            log::debug!(
+                "[sidecar] kill -9 pid={} failed to execute: {} (continuing)",
+                pid,
+                e
+            );
+        }
+    }
 }
 
 #[cfg(any(target_os = "windows", target_os = "linux"))]
