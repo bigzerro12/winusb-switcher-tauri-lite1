@@ -205,28 +205,41 @@ fn ensure_linux_udev_rules(app: &AppHandle) -> AppResult<()> {
         return Ok(());
     }
 
-    // pkexec prompt (interactive). If user cancels, keep going; OpenEx will still fail and logs will show why.
+    // pkexec prompt (interactive). Run install + reload + trigger in a single
+    // privileged invocation so desktop environments only prompt once.
     log::info!(
         "[bootstrap] udev rules not present ({}). Attempting pkexec install...",
         RULES_DST
     );
+    let mut helper = std::env::temp_dir();
+    helper.push(format!(
+        "winusb-switcher-lite-udev-install-{}.sh",
+        std::process::id()
+    ));
+    {
+        let mut helper_file = fs::OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .mode(0o700)
+            .open(&helper)?;
+        helper_file.write_all(
+            br#"#!/bin/sh
+set -eu
+install -m 0644 "$1" /etc/udev/rules.d/99-jlink.rules
+udevadm control --reload-rules
+udevadm trigger
+"#,
+        )?;
+    }
     let status = Command::new("pkexec")
-        .arg("install")
-        .arg("-m")
-        .arg("0644")
+        .arg(helper.to_string_lossy().as_ref())
         .arg(tmp.to_string_lossy().as_ref())
-        .arg(RULES_DST)
         .status();
 
     match status {
         Ok(s) if s.success() => {
             log::info!("[bootstrap] pkexec installed udev rules to {}", RULES_DST);
-            let _ = Command::new("pkexec")
-                .args(["udevadm", "control", "--reload-rules"])
-                .status();
-            let _ = Command::new("pkexec")
-                .args(["udevadm", "trigger"])
-                .status();
         }
         Ok(s) => {
             log::warn!(
@@ -243,6 +256,7 @@ fn ensure_linux_udev_rules(app: &AppHandle) -> AppResult<()> {
     }
 
     let _ = fs::remove_file(&tmp);
+    let _ = fs::remove_file(&helper);
     Ok(())
 }
 
