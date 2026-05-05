@@ -54,7 +54,7 @@ pub fn prepare(app: &AppHandle, override_dll: Option<PathBuf>) -> AppResult<JLin
         crate::bundled_jlink::resolve_bundled_jlinkarm_dll(app)?
     };
 
-    crate::jlink_ffi::bridge_load(&dll_path)
+    crate::jlink_ffi::bridge::load(&dll_path)
         .map_err(|e| {
             log::warn!(
                 "[bootstrap] bridge_load failed for {}: {}",
@@ -72,7 +72,7 @@ pub fn prepare(app: &AppHandle, override_dll: Option<PathBuf>) -> AppResult<JLin
     let runtime_dir = parent_or_self(&dll_path);
     crate::platform::ensure_jlink_runtime_env(&runtime_dir.to_string_lossy());
 
-    let version = crate::jlink_ffi::dll_version_string();
+    let version = crate::jlink_ffi::bridge::dll_version_string();
     log::debug!(
         "[bootstrap] Windows SEGGER bridge ready: dir={} lib={} version={:?}",
         runtime_dir.display(),
@@ -112,7 +112,7 @@ pub fn prepare(app: &AppHandle) -> AppResult<JLinkRuntime> {
             ))
         })?;
 
-    crate::jlink_ffi::bridge_load(&lib_path)
+    crate::jlink_ffi::bridge::load(&lib_path)
         .map_err(|e| {
             log::warn!(
                 "[bootstrap] bridge_load failed for {}: {}",
@@ -127,7 +127,7 @@ pub fn prepare(app: &AppHandle) -> AppResult<JLinkRuntime> {
         lib_path.to_string_lossy().as_ref(),
     );
 
-    let version = crate::jlink_ffi::dll_version_string();
+    let version = crate::jlink_ffi::bridge::dll_version_string();
     log::debug!(
         "[bootstrap] Linux SEGGER bridge ready: dir={} lib={} version={:?}",
         runtime_dir.display(),

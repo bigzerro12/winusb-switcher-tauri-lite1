@@ -233,25 +233,60 @@ pub fn last_native_error() -> String {
 /// Thin adapter over raw FFI helpers so domain code can depend on `BridgeError` instead of `String`.
 pub mod bridge {
     use crate::error::BridgeError;
+    use serde_json::json;
 
     pub fn is_loaded() -> bool {
-        super::bridge_is_loaded()
+        crate::bridge_sidecar::call("is_loaded", serde_json::Value::Null)
+            .ok()
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
     }
 
     pub fn last_error() -> String {
-        super::last_native_error()
+        crate::bridge_sidecar::call("last_error", serde_json::Value::Null)
+            .ok()
+            .and_then(|v| v.as_str().map(ToOwned::to_owned))
+            .unwrap_or_else(|| "sidecar unavailable".to_string())
+    }
+
+    pub fn load(dll: &std::path::Path) -> Result<(), BridgeError> {
+        let path = dll
+            .to_str()
+            .ok_or_else(|| BridgeError::Failed("DLL path must be valid UTF-8".to_string()))?;
+        crate::bridge_sidecar::call("load", json!({ "path": path }))
+            .map(|_| ())
+            .map_err(BridgeError::Failed)
+    }
+
+    pub fn dll_version_string() -> Option<String> {
+        crate::bridge_sidecar::call("dll_version", serde_json::Value::Null)
+            .ok()
+            .and_then(|v| v.as_str().map(ToOwned::to_owned))
     }
 
     pub fn list_probes_json() -> Result<String, BridgeError> {
-        super::list_probes_json().map_err(BridgeError::Failed)
+        crate::bridge_sidecar::call("list_probes_json", serde_json::Value::Null)
+            .map_err(BridgeError::Failed)?
+            .as_str()
+            .map(ToOwned::to_owned)
+            .ok_or_else(|| BridgeError::Failed("invalid list_probes_json response".to_string()))
     }
 
     pub fn probe_open_details(index: usize) -> Result<super::ProbeOpenDetails, BridgeError> {
-        super::probe_open_details(index).map_err(BridgeError::Failed)
+        let v = crate::bridge_sidecar::call("probe_open_details", json!({ "index": index }))
+            .map_err(BridgeError::Failed)?;
+        Ok(super::ProbeOpenDetails {
+            firmware: v["firmware"].as_str().unwrap_or("").to_string(),
+            usb_driver: v["usbDriver"].as_str().unwrap_or("Unknown").to_string(),
+        })
     }
 
     pub fn update_firmware_json(index: usize) -> Result<String, BridgeError> {
-        super::update_firmware_json(index).map_err(BridgeError::Failed)
+        crate::bridge_sidecar::call("update_firmware_json", json!({ "index": index }))
+            .map_err(BridgeError::Failed)?
+            .as_str()
+            .map(ToOwned::to_owned)
+            .ok_or_else(|| BridgeError::Failed("invalid update_firmware_json response".to_string()))
     }
 
     pub fn update_firmware_json_by_sn(
@@ -259,12 +294,26 @@ pub mod bridge {
         retries: i32,
         retry_delay_ms: u32,
     ) -> Result<String, BridgeError> {
-        super::update_firmware_json_by_sn(serial_number, retries, retry_delay_ms)
-            .map_err(BridgeError::Failed)
+        crate::bridge_sidecar::call(
+            "update_firmware_json_by_sn",
+            json!({
+                "serialNumber": serial_number,
+                "retries": retries,
+                "retryDelayMs": retry_delay_ms,
+            }),
+        )
+        .map_err(BridgeError::Failed)?
+        .as_str()
+        .map(ToOwned::to_owned)
+        .ok_or_else(|| BridgeError::Failed("invalid update_firmware_json_by_sn response".to_string()))
     }
 
     pub fn switch_usb_json(index: usize, winusb: bool) -> Result<String, BridgeError> {
-        super::switch_usb_json(index, winusb).map_err(BridgeError::Failed)
+        crate::bridge_sidecar::call("switch_usb_json", json!({ "index": index, "winusb": winusb }))
+            .map_err(BridgeError::Failed)?
+            .as_str()
+            .map(ToOwned::to_owned)
+            .ok_or_else(|| BridgeError::Failed("invalid switch_usb_json response".to_string()))
     }
 
     pub fn switch_usb_json_by_sn(
@@ -273,7 +322,18 @@ pub mod bridge {
         retries: i32,
         retry_delay_ms: u32,
     ) -> Result<String, BridgeError> {
-        super::switch_usb_json_by_sn(serial_number, winusb, retries, retry_delay_ms)
-            .map_err(BridgeError::Failed)
+        crate::bridge_sidecar::call(
+            "switch_usb_json_by_sn",
+            json!({
+                "serialNumber": serial_number,
+                "winusb": winusb,
+                "retries": retries,
+                "retryDelayMs": retry_delay_ms,
+            }),
+        )
+        .map_err(BridgeError::Failed)?
+        .as_str()
+        .map(ToOwned::to_owned)
+        .ok_or_else(|| BridgeError::Failed("invalid switch_usb_json_by_sn response".to_string()))
     }
 }

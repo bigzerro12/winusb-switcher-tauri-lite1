@@ -2,6 +2,8 @@
 
 mod commands;
 mod domain;
+mod bridge_sidecar;
+mod logging;
 mod bundled_jlink;
 mod error;
 mod jlink_ffi;
@@ -39,4 +41,8 @@ pub fn run() {
     builder
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+pub fn run_jlink_sidecar() -> i32 {
+    bridge_sidecar::run_stdio_sidecar()
 }
