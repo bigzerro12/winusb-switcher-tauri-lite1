@@ -145,7 +145,7 @@ pub fn prepare(app: &AppHandle) -> AppResult<JLinkRuntime> {
 fn ensure_linux_udev_rules(app: &AppHandle) -> AppResult<()> {
     use std::fs;
     use std::io::Write;
-    use std::os::unix::fs::OpenOptionsExt;
+    use std::os::unix::fs::PermissionsExt;
     use std::process::Command;
 
     const RULES_DST: &str = "/etc/udev/rules.d/99-jlink.rules";
@@ -177,26 +177,21 @@ fn ensure_linux_udev_rules(app: &AppHandle) -> AppResult<()> {
         );
     }
 
-    // Write to a temp file so pkexec can read it.
-    let mut tmp = std::env::temp_dir();
-    tmp.push(format!(
-        "winusb-switcher-lite-99-jlink-{}.rules",
-        std::process::id()
-    ));
-    {
-        let mut f = fs::OpenOptions::new()
-            .create(true)
-            .truncate(true)
-            .write(true)
-            .mode(0o600)
-            .open(&tmp)?;
-        f.write_all(&bytes)?;
-    }
+    // Use securely created temp files so local users cannot race path creation in /tmp.
+    let mut tmp_file = tempfile::Builder::new()
+        .prefix("winusb-switcher-lite-99-jlink-")
+        .suffix(".rules")
+        .tempfile()
+        .map_err(|e| AppError::Internal(format!("create temp rules file: {}", e)))?;
+    tmp_file
+        .as_file_mut()
+        .write_all(&bytes)
+        .map_err(|e| AppError::Internal(format!("write temp rules file: {}", e)))?;
 
     // If we can install directly (e.g. running as root), do so; otherwise attempt pkexec.
     let install_direct = || -> std::io::Result<()> {
         fs::create_dir_all("/etc/udev/rules.d")?;
-        fs::copy(&tmp, RULES_DST)?;
+        fs::copy(tmp_file.path(), RULES_DST)?;
         Ok(())
     };
 
@@ -207,7 +202,6 @@ fn ensure_linux_udev_rules(app: &AppHandle) -> AppResult<()> {
             .args(["control", "--reload-rules"])
             .status();
         let _ = Command::new("udevadm").arg("trigger").status();
-        let _ = fs::remove_file(&tmp);
         return Ok(());
     }
 
@@ -217,30 +211,28 @@ fn ensure_linux_udev_rules(app: &AppHandle) -> AppResult<()> {
         "[bootstrap] udev rules not present ({}). Attempting pkexec install...",
         RULES_DST
     );
-    let mut helper = std::env::temp_dir();
-    helper.push(format!(
-        "winusb-switcher-lite-udev-install-{}.sh",
-        std::process::id()
-    ));
-    {
-        let mut helper_file = fs::OpenOptions::new()
-            .create(true)
-            .truncate(true)
-            .write(true)
-            .mode(0o700)
-            .open(&helper)?;
-        helper_file.write_all(
+    let mut helper_file = tempfile::Builder::new()
+        .prefix("winusb-switcher-lite-udev-install-")
+        .suffix(".sh")
+        .tempfile()
+        .map_err(|e| AppError::Internal(format!("create temp helper script: {}", e)))?;
+    helper_file
+        .as_file_mut()
+        .write_all(
             br#"#!/bin/sh
 set -eu
 install -m 0644 "$1" /etc/udev/rules.d/99-jlink.rules
 udevadm control --reload-rules
 udevadm trigger
 "#,
-        )?;
-    }
+        )
+        .map_err(|e| AppError::Internal(format!("write temp helper script: {}", e)))?;
+    fs::set_permissions(helper_file.path(), fs::Permissions::from_mode(0o700))
+        .map_err(|e| AppError::Internal(format!("chmod helper script: {}", e)))?;
+
     let status = Command::new("pkexec")
-        .arg(helper.to_string_lossy().as_ref())
-        .arg(tmp.to_string_lossy().as_ref())
+        .arg(helper_file.path())
+        .arg(tmp_file.path())
         .status();
 
     match status {
@@ -260,8 +252,5 @@ udevadm trigger
             );
         }
     }
-
-    let _ = fs::remove_file(&tmp);
-    let _ = fs::remove_file(&helper);
     Ok(())
 }

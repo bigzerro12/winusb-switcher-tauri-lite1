@@ -7,7 +7,6 @@ The app ships with a bundled SEGGER runtime and firmware assets. It does not inc
 - **Bundled baseline:** SEGGER J-Link Software V9.36 (DLL build 93600) with adjacent `Firmwares/` assets
 - **Stack:** Rust (`src-tauri`), Tauri 2, React 18, TypeScript, Vite, Zustand
 - **Packaging:** Windows (`.exe`/`.msi`) and Linux (`.deb`/`.AppImage`)
-- **Compliance:** You are responsible for SEGGER license and redistribution compliance for all bundled binaries and firmware files
 
 ---
 

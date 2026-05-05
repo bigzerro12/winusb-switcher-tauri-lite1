@@ -52,7 +52,18 @@ function resetStore() {
     error: null,
     usbDriverStatus: "idle",
     usbDriverMessage: "",
+    loadRequestId: 0,
+    scanRequestId: 0,
+    switchRequestId: 0,
   });
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
 }
 
 describe("probeStore", () => {
@@ -104,5 +115,25 @@ describe("probeStore", () => {
     expect(state.probes).toHaveLength(2);
     expect(state.probes[0].driver).toBe("WinUSB");
     expect(state.driverOverrides).toEqual({});
+  });
+
+  it("ignores stale loadRuntimeAndProbes responses", async () => {
+    const first = deferred<DetectAndScanResult>();
+    const second = deferred<DetectAndScanResult>();
+    detectAndScanMock
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementationOnce(() => second.promise);
+
+    const run1 = useProbeStore.getState().loadRuntimeAndProbes();
+    const run2 = useProbeStore.getState().loadRuntimeAndProbes();
+
+    second.resolve(detectResult([probe({ id: "newer" })]));
+    await run2;
+    first.resolve(detectResult([probe({ id: "older" })]));
+    await run1;
+
+    const state = useProbeStore.getState();
+    expect(state.probes).toHaveLength(1);
+    expect(state.probes[0].id).toBe("newer");
   });
 });

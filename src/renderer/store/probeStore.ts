@@ -44,6 +44,9 @@ interface ProbeState {
   error: string | null;
   usbDriverStatus: "idle" | "switching" | "success" | "failed";
   usbDriverMessage: string;
+  loadRequestId: number;
+  scanRequestId: number;
+  switchRequestId: number;
 
   loadRuntimeAndProbes: () => Promise<void>;
   scanProbesSilent: () => Promise<void>;
@@ -64,11 +67,16 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
   error: null,
   usbDriverStatus: "idle",
   usbDriverMessage: "",
+  loadRequestId: 0,
+  scanRequestId: 0,
+  switchRequestId: 0,
 
   loadRuntimeAndProbes: async () => {
-    set({ isLoading: true, error: null });
+    const requestId = get().loadRequestId + 1;
+    set({ loadRequestId: requestId, isLoading: true, error: null });
     try {
       const result = await detectAndScan();
+      if (get().loadRequestId !== requestId) return;
 
       // Reset local driver overrides so UI state always reflects fresh bridge data.
       const probes = result.probes;
@@ -92,9 +100,11 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
         const selectedBefore = get().selectedProbeId;
         // Short backoff ladder for cold-start probes that report firmware a bit late.
         for (const delayMs of [600, 1400, 2600]) {
+          if (get().loadRequestId !== requestId) break;
           await new Promise((r) => setTimeout(r, delayMs));
           try {
             const cur = await scanProbes();
+            if (get().loadRequestId !== requestId) break;
             const selectedProbeId2 = preserveSelection(cur, selectedBefore);
             set({ probes: cur, selectedProbeId: selectedProbeId2 });
             if (cur.every((p) => !!p.firmware)) break;
@@ -102,9 +112,12 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
             // ignore and keep retrying
           }
         }
-        set({ isFirmwareRefreshing: false });
+        if (get().loadRequestId === requestId) {
+          set({ isFirmwareRefreshing: false });
+        }
       }
     } catch (err) {
+      if (get().loadRequestId !== requestId) return;
       set({
         isRuntimeReady: false,
         error: normalizeTauriError(err),
@@ -114,13 +127,16 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
   },
 
   scanProbes: async () => {
+    const requestId = get().scanRequestId + 1;
     set({
+      scanRequestId: requestId,
       isLoading: true,
       error: null,
       ...resetUsbOperationStatus(),
     });
     try {
       const probes = await scanProbes();
+      if (get().scanRequestId !== requestId) return;
       const selectedProbeId = preserveSelection(probes, get().selectedProbeId);
       set({
         probes,
@@ -129,6 +145,7 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
         driverOverrides: {},
       });
     } catch (err) {
+      if (get().scanRequestId !== requestId) return;
       set({
         error: normalizeTauriError(err),
         isLoading: false,
@@ -137,8 +154,11 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
   },
 
   scanProbesSilent: async () => {
+    const requestId = get().scanRequestId + 1;
+    set({ scanRequestId: requestId });
     try {
       const probes = await scanProbes();
+      if (get().scanRequestId !== requestId) return;
       const selectedProbeId = preserveSelection(probes, get().selectedProbeId);
       set({ probes, selectedProbeId, driverOverrides: {} });
     } catch {
@@ -155,7 +175,9 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
   },
 
   switchUsbDriver: async (probeId, mode) => {
+    const requestId = get().switchRequestId + 1;
     set({
+      switchRequestId: requestId,
       usbDriverStatus: "switching",
       usbDriverMessage: mode === "winUsb"
         ? "Updating probe firmware and switching the USB driver to WinUSB..."
@@ -180,6 +202,7 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
         probe?.provider,
         probe?.serialNumber,
       );
+      if (get().switchRequestId !== requestId) return;
 
       if (!result.success) {
         set({
@@ -207,8 +230,10 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
       let best: Probe[] = get().probes;
       const deadline = Date.now() + 8000;
       while (Date.now() < deadline) {
+        if (get().switchRequestId !== requestId) return;
         try {
           const cur = applyDriverOverrides(await scanProbes(), overrides);
+          if (get().switchRequestId !== requestId) return;
           // Do not shrink visible rows during the reconnect window.
           if (cur.length >= best.length) {
             best = cur;
@@ -225,6 +250,7 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
       // Final reconciliation with bridge data once the reconnect window settles.
       try {
         const fresh = await scanProbes();
+        if (get().switchRequestId !== requestId) return;
         if (fresh.length >= best.length) {
           set({
             probes: fresh,
@@ -264,6 +290,7 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
         usbDriverMessage: mode === "winUsb" ? winMsg : seggerMsg,
       });
     } catch (err) {
+      if (get().switchRequestId !== requestId) return;
       set({
         usbDriverStatus: "failed",
         usbDriverMessage: normalizeTauriError(err),

@@ -3,10 +3,17 @@ use std::io::{BufRead, BufReader, BufWriter, Write};
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 #[cfg(any(target_os = "windows", target_os = "linux"))]
+use std::sync::mpsc::{self, RecvTimeoutError};
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 use std::sync::{Mutex, OnceLock};
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+use std::time::Duration;
 
 #[cfg(any(target_os = "windows", target_os = "linux"))]
-#[derive(serde::Serialize, serde::Deserialize)]
+const SIDECAR_CALL_TIMEOUT: Duration = Duration::from_secs(8);
+
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct RpcRequest {
     op: String,
     args: serde_json::Value,
@@ -97,6 +104,10 @@ impl SidecarProcess {
                 .unwrap_or_else(|| "sidecar op failed".to_string()))
         }
     }
+
+    fn pid(&self) -> u32 {
+        self._child.id()
+    }
 }
 
 #[cfg(any(target_os = "windows", target_os = "linux"))]
@@ -115,34 +126,96 @@ pub fn call(op: &str, args: serde_json::Value) -> Result<serde_json::Value, Stri
 
     // Retry once after a respawn if the child exits mid-request.
     for attempt in 0..2 {
-        let mut slot = sidecar_slot()
-            .lock()
-            .map_err(|_| "sidecar mutex poisoned".to_string())?;
-        if slot.is_none() {
-            *slot = Some(SidecarProcess::spawn()?);
-        }
-        if let Some(proc_) = slot.as_mut() {
-            match proc_.call(&req) {
-                Ok(v) => {
-                    log::trace!("[sidecar] op={} attempt={} ok", op, attempt + 1);
-                    return Ok(v);
+        let proc_ = {
+            let mut slot = sidecar_slot()
+                .lock()
+                .map_err(|_| "sidecar mutex poisoned".to_string())?;
+            if slot.is_none() {
+                *slot = Some(SidecarProcess::spawn()?);
+            }
+            slot.take()
+                .ok_or_else(|| "sidecar unavailable".to_string())?
+        };
+
+        let pid = proc_.pid();
+        match call_with_timeout(proc_, req.clone(), SIDECAR_CALL_TIMEOUT) {
+            Ok((returned_proc, Ok(v))) => {
+                let mut slot = sidecar_slot()
+                    .lock()
+                    .map_err(|_| "sidecar mutex poisoned".to_string())?;
+                *slot = Some(returned_proc);
+                log::trace!("[sidecar] op={} attempt={} ok", op, attempt + 1);
+                return Ok(v);
+            }
+            Ok((_, Err(e))) => {
+                log::warn!(
+                    "[sidecar] op={} attempt={} failed: {} (respawning)",
+                    op,
+                    attempt + 1,
+                    e
+                );
+                let mut slot = sidecar_slot()
+                    .lock()
+                    .map_err(|_| "sidecar mutex poisoned".to_string())?;
+                *slot = None;
+                if attempt == 1 {
+                    return Err(e);
                 }
-                Err(e) => {
-                    log::warn!(
-                        "[sidecar] op={} attempt={} failed: {} (respawning)",
-                        op,
-                        attempt + 1,
-                        e
-                    );
-                    *slot = None;
-                    if attempt == 1 {
-                        return Err(e);
-                    }
+            }
+            Err(e) => {
+                log::warn!(
+                    "[sidecar] op={} attempt={} timeout/channel error: {} (killing pid={} and respawning)",
+                    op,
+                    attempt + 1,
+                    e,
+                    pid
+                );
+                kill_sidecar_process(pid);
+                let mut slot = sidecar_slot()
+                    .lock()
+                    .map_err(|_| "sidecar mutex poisoned".to_string())?;
+                *slot = None;
+                if attempt == 1 {
+                    return Err(e);
                 }
             }
         }
     }
     Err("sidecar unavailable".to_string())
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+fn call_with_timeout(
+    mut proc_: SidecarProcess,
+    req: RpcRequest,
+    timeout: Duration,
+) -> Result<(SidecarProcess, Result<serde_json::Value, String>), String> {
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let result = proc_.call(&req);
+        let _ = tx.send((proc_, result));
+    });
+
+    match rx.recv_timeout(timeout) {
+        Ok(v) => Ok(v),
+        Err(RecvTimeoutError::Timeout) => Err(format!(
+            "sidecar call timed out after {}ms",
+            timeout.as_millis()
+        )),
+        Err(RecvTimeoutError::Disconnected) => Err("sidecar worker disconnected".to_string()),
+    }
+}
+
+#[cfg(all(any(target_os = "windows", target_os = "linux"), target_os = "windows"))]
+fn kill_sidecar_process(pid: u32) {
+    let _ = Command::new("taskkill")
+        .args(["/PID", &pid.to_string(), "/T", "/F"])
+        .status();
+}
+
+#[cfg(all(any(target_os = "windows", target_os = "linux"), target_os = "linux"))]
+fn kill_sidecar_process(pid: u32) {
+    let _ = Command::new("kill").args(["-9", &pid.to_string()]).status();
 }
 
 #[cfg(any(target_os = "windows", target_os = "linux"))]

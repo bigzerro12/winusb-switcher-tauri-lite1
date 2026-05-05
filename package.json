@@ -1,11 +1,11 @@
 {
-  "name": "winusb-switcher-lite",
+  "name": "jlink-winusb-switcher-lite",
   "version": "1.0.0",
   "description": "J-Link WinUSB Switcher — lightweight utility to switch J-Link probes to WinUSB",
   "license": "MIT",
   "author": {
     "name": "J-Link WinUSB Switcher",
-    "email": "maintainers@winusb-switcher.invalid"
+    "email": "bigzerro12@gmail.com"
   },
   "scripts": {
     "dev": "vite",
