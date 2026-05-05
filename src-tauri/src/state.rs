@@ -1,6 +1,6 @@
 //! Global application state managed by Tauri's state system.
 
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 
 use crate::domain::probe::ActiveRuntime;
 
@@ -24,24 +24,34 @@ impl AppState {
     }
 
     pub fn set_runtime(&self, rt: ActiveRuntime) {
-        *self.runtime.lock().expect(POISONED_RUNTIME_MUTEX) = Some(rt);
+        *Self::lock_or_recover(&self.runtime, POISONED_RUNTIME_MUTEX) = Some(rt);
     }
 
     pub fn get_runtime(&self) -> Option<ActiveRuntime> {
-        self.runtime.lock().expect(POISONED_RUNTIME_MUTEX).clone()
+        Self::lock_or_recover(&self.runtime, POISONED_RUNTIME_MUTEX).clone()
     }
 
     /// Returns true exactly once per app session.
     /// Used to run one-time startup maintenance (e.g. firmware ensure).
     pub fn take_firmware_bootstrap_slot(&self) -> bool {
-        let mut v = self
-            .firmware_bootstrap_done
-            .lock()
-            .expect(POISONED_BOOTSTRAP_MUTEX);
+        let mut v = Self::lock_or_recover(
+            &self.firmware_bootstrap_done,
+            POISONED_BOOTSTRAP_MUTEX,
+        );
         if *v {
             return false;
         }
         *v = true;
         true
+    }
+
+    fn lock_or_recover<'a, T>(mutex: &'a Mutex<T>, poison_msg: &str) -> MutexGuard<'a, T> {
+        match mutex.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                log::warn!("{}", poison_msg);
+                poisoned.into_inner()
+            }
+        }
     }
 }

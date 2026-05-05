@@ -1,6 +1,6 @@
 # J-Link WinUSB Switcher
 
-A lightweight desktop utility built with **Tauri 2** to manage and switch USB drivers of connected **SEGGER J-Link** probes to **WinUSB** (and back to the SEGGER USB stack where supported). The application loads SEGGER’s J-Link **shared library in-process** through a small native bridge and ships a **trimmed runtime** under `src-tauri/resources/jlink-runtime/` (Windows DLLs or Linux `.so`, plus an adjacent **`Firmwares/`** tree). There is **no** in-app download, installer, or auto-update flow for SEGGER software.
+A desktop operations utility for embedded teams to manage **SEGGER J-Link** probe USB mode at scale. It switches probes between **WinUSB** and the SEGGER USB stack (where supported), with deterministic bundled runtime behavior for lab and manufacturing setups. The application loads SEGGER’s J-Link **shared library in-process** through a native bridge and ships a trimmed runtime under `src-tauri/resources/jlink-runtime/` (Windows DLLs or Linux `.so`, plus adjacent **`Firmwares/`**). There is **no** in-app SEGGER downloader or updater.
 
 **Bundled J-Link runtime:** **SEGGER J-Link Software V9.36** (DLL build **93600**) + probe firmware images under `Firmwares/`.  
 **Stack:** Rust (`src-tauri`), Tauri 2, React 18, TypeScript, Vite, Zustand, vanilla CSS.  
@@ -83,7 +83,7 @@ yarn tauri:build  # Release-style bundle
 
 | Item | Description |
 |------|-------------|
-| **`WINUSB_JLINK_DLL_OVERRIDE`** (Windows) | Optional absolute path to `JLink_x64.dll` or `JLinkARM.dll` to force-load a specific SEGGER build (e.g. compare against the bundled tree). |
+| **`WINUSB_JLINK_DLL_OVERRIDE`** (Windows) | Debug-only override for development diagnostics. In release builds this variable is ignored and the bundled runtime is used. |
 | **Logging** | Backend uses `log` + `tauri-plugin-log` (stdout, app log directory, and webview target in debug). Adjust levels in [`src-tauri/src/lib.rs`](src-tauri/src/lib.rs). |
 | **CSP** | Production CSP is in [`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json). Development merges [`src-tauri/tauri.conf.dev.json`](src-tauri/tauri.conf.dev.json) (via `yarn tauri:dev`) so Vite/HMR localhost origins are allowed without relaxing the shipped app policy. |
 
@@ -106,11 +106,19 @@ The history of this repository was migrated off LFS for CI reliability. If you f
 
 **Release checklist (maintainers):**
 
-1. Align **semver** in `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml` (no `v` prefix in those files). The first public release line is **v1.0.0**; do not resurrect retired pre-1.0 tags on the default branch without coordination.
+1. Align **semver** in `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml` (no `v` prefix in those files). Use forward-only tags (`vX.Y.Z`) and avoid reusing an existing tag for a different commit.
 2. Run `cargo check --manifest-path src-tauri/Cargo.toml` after changing `Cargo.toml` so `Cargo.lock` stays consistent.
 3. Create an **annotated** tag `vX.Y.Z` on the release commit and **`git push origin vX.Y.Z`**. [`build.yml`](.github/workflows/build.yml) builds all targets and **`softprops/action-gh-release`** creates the GitHub Release with attached installers (no separate `gh release create` needed).
 4. In the repo **Settings → Actions → General → Workflow permissions**, allow **Read and write** (or ensure `GITHUB_TOKEN` can upload release assets) so the release job can publish files.
 5. For Windows, use **Authenticode** signing in CI or post-build if you want fewer SmartScreen warnings for unsigned builds.
+
+---
+
+## Support and operations
+
+- Primary support path is GitHub Issues in this repository (include app logs and `get_jlink_diagnostics` output).
+- Releases are intended to be reproducible from tagged commits via CI workflows.
+- This project is not an official SEGGER product; probe/driver outcomes still depend on host OS policy and device state.
 
 ---
 

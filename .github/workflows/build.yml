@@ -181,7 +181,6 @@ jobs:
           name: bundle-linux-i686-unknown-linux-gnu
           path: |
             src-tauri/target/release/bundle/deb/
-            src-tauri/target/release/bundle/appimage/
           if-no-files-found: error
           retention-days: 14
 
