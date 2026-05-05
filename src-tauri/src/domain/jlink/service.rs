@@ -8,8 +8,8 @@ use crate::domain::jlink::types::{
 };
 use crate::domain::probe::ProbeBackend;
 use crate::error::{AppError, AppResult, BridgeError};
-use crate::jlink_ffi::{bridge, ProbeOpenDetails};
 use crate::infra::runtime::bundled::JLinkRuntime;
+use crate::jlink_ffi::{bridge, ProbeOpenDetails};
 
 pub struct JLinkService;
 
@@ -193,7 +193,11 @@ impl JLinkService {
         probe_index: usize,
         mode: UsbDriverMode,
     ) -> AppResult<UsbDriverResult> {
-        log::debug!("[jlink] switch_usb_driver: probe[{}] mode={:?}", probe_index, mode);
+        log::debug!(
+            "[jlink] switch_usb_driver: probe[{}] mode={:?}",
+            probe_index,
+            mode
+        );
         Self::ensure_bridge_loaded()?;
         let label = format!("probe[{}]", probe_index);
         Ok(switch_with_best_effort_firmware_update(
@@ -202,7 +206,6 @@ impl JLinkService {
             || switch_usb_via_bridge(probe_index, mode),
         ))
     }
-
 }
 
 impl JLinkService {
@@ -302,7 +305,11 @@ impl ProbeBackend for JLinkService {
         Self::scan_probes(rt)
     }
 
-    fn switch_usb_driver(rt: &Self::Runtime, probe_index: usize, mode: UsbDriverMode) -> AppResult<UsbDriverResult> {
+    fn switch_usb_driver(
+        rt: &Self::Runtime,
+        probe_index: usize,
+        mode: UsbDriverMode,
+    ) -> AppResult<UsbDriverResult> {
         Self::switch_usb_driver(rt, probe_index, mode)
     }
 }
@@ -336,9 +343,21 @@ fn log_probes_summary(source: &str, probes: &[Probe]) {
             "[jlink]   [{}] sn={} nick={} product={} conn={} driver={} firmware={}",
             i,
             redact_serial_for_logs(&p.serial_number),
-            if p.nick_name.is_empty() { "-" } else { &p.nick_name },
-            if p.product_name.is_empty() { "-" } else { &p.product_name },
-            if p.connection.is_empty() { "-" } else { &p.connection },
+            if p.nick_name.is_empty() {
+                "-"
+            } else {
+                &p.nick_name
+            },
+            if p.product_name.is_empty() {
+                "-"
+            } else {
+                &p.product_name
+            },
+            if p.connection.is_empty() {
+                "-"
+            } else {
+                &p.connection
+            },
             if p.driver.is_empty() { "-" } else { &p.driver },
             fw
         );
@@ -374,53 +393,65 @@ fn scan_probes_via_bridge() -> AppResult<Vec<Probe>> {
 
         let t0 = std::time::Instant::now();
 
-        let try_read = || -> Result<ProbeOpenDetails, BridgeError> { bridge::probe_open_details(index) };
+        let try_read =
+            || -> Result<ProbeOpenDetails, BridgeError> { bridge::probe_open_details(index) };
 
-        let (firmware, fw_src, driver_label): (Option<String>, &'static str, String) = match try_read() {
-            Ok(d) if !d.firmware.is_empty() => (Some(d.firmware), "bridge_openex", d.usb_driver),
-            Ok(d) => (discovery_fw.clone(), "discovery_only", d.usb_driver),
-            Err(e) => {
-                // On cold start (or right after udev install), OpenEx may fail transiently.
-                // Retry once quickly to avoid "firmware missing until refresh".
-                let msg = e.to_string();
-                let transient = msg.contains("Cannot connect")
-                    || msg.contains("Could not read J-Link capabilities")
-                    || msg.contains("Communication timed out");
+        let (firmware, fw_src, driver_label): (Option<String>, &'static str, String) =
+            match try_read() {
+                Ok(d) if !d.firmware.is_empty() => {
+                    (Some(d.firmware), "bridge_openex", d.usb_driver)
+                }
+                Ok(d) => (discovery_fw.clone(), "discovery_only", d.usb_driver),
+                Err(e) => {
+                    // On cold start (or right after udev install), OpenEx may fail transiently.
+                    // Retry once quickly to avoid "firmware missing until refresh".
+                    let msg = e.to_string();
+                    let transient = msg.contains("Cannot connect")
+                        || msg.contains("Could not read J-Link capabilities")
+                        || msg.contains("Communication timed out");
 
-                if transient {
-                    log::debug!(
+                    if transient {
+                        log::debug!(
                         "[jlink] probe_open_details transient OpenEx error index={} sn={} — {} (retrying once)",
                         index,
                         redact_serial_for_logs(&serial),
                         msg
                     );
-                    std::thread::sleep(std::time::Duration::from_millis(250));
-                    match try_read() {
-                        Ok(d) if !d.firmware.is_empty() => {
-                            (Some(d.firmware), "bridge_openex_retry", d.usb_driver)
-                        }
-                        Ok(d) => (discovery_fw.clone(), "discovery_only_retry", d.usb_driver),
-                        Err(e2) => {
-                            log::warn!(
+                        std::thread::sleep(std::time::Duration::from_millis(250));
+                        match try_read() {
+                            Ok(d) if !d.firmware.is_empty() => {
+                                (Some(d.firmware), "bridge_openex_retry", d.usb_driver)
+                            }
+                            Ok(d) => (discovery_fw.clone(), "discovery_only_retry", d.usb_driver),
+                            Err(e2) => {
+                                log::warn!(
                                 "[jlink] probe_open_details failed after retry index={} sn={} — {} (using discovery if present)",
                                 index,
                                 redact_serial_for_logs(&serial),
                                 e2
                             );
-                            (discovery_fw.clone(), "discovery_after_err", "Unknown".to_string())
+                                (
+                                    discovery_fw.clone(),
+                                    "discovery_after_err",
+                                    "Unknown".to_string(),
+                                )
+                            }
                         }
-                    }
-                } else {
-                    log::warn!(
+                    } else {
+                        log::warn!(
                         "[jlink] probe_open_details failed index={} sn={} — {} (using discovery if present)",
                         index,
                         redact_serial_for_logs(&serial),
                         msg
                     );
-                    (discovery_fw.clone(), "discovery_after_err", "Unknown".to_string())
+                        (
+                            discovery_fw.clone(),
+                            "discovery_after_err",
+                            "Unknown".to_string(),
+                        )
+                    }
                 }
-            }
-        };
+            };
 
         log::debug!(
             "[jlink] probe[{}] sn={} fw_source={} read_ms={:.1}",
@@ -632,9 +663,8 @@ fn parse_switch_usb_response(probe_index: usize, raw: &str) -> UsbDriverResult {
 #[cfg(test)]
 mod tests {
     use super::{
-        parse_discovery_firmware_string, parse_firmware_update_response,
-        parse_switch_usb_response, JLinkService,
-        switch_with_best_effort_firmware_update,
+        parse_discovery_firmware_string, parse_firmware_update_response, parse_switch_usb_response,
+        switch_with_best_effort_firmware_update, JLinkService,
     };
     use crate::domain::jlink::types::FirmwareUpdateResult;
 
@@ -822,4 +852,3 @@ mod tests {
         assert!(detail.contains("Firmware update failed before switch: OpenEx timeout"));
     }
 }
-

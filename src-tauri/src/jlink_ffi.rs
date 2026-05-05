@@ -31,7 +31,11 @@ unsafe extern "C" {
     fn jlink_bridge_list_probes_json() -> *mut c_char;
     fn jlink_bridge_probe_firmware(index: i32) -> *mut c_char;
     fn jlink_bridge_update_firmware(index: i32) -> *mut c_char;
-    fn jlink_bridge_update_firmware_by_sn(serial_number: u32, retries: i32, retry_delay_ms: u32) -> *mut c_char;
+    fn jlink_bridge_update_firmware_by_sn(
+        serial_number: u32,
+        retries: i32,
+        retry_delay_ms: u32,
+    ) -> *mut c_char;
     fn jlink_bridge_switch_usb_driver(index: i32, winusb: i32) -> *mut c_char;
     fn jlink_bridge_switch_usb_driver_by_sn(
         serial_number: u32,
@@ -105,9 +109,8 @@ pub fn probe_open_details(index: usize) -> Result<ProbeOpenDetails, String> {
     unsafe {
         let p = jlink_bridge_probe_firmware(index as i32);
         let raw = take_c_str(p).ok_or_else(|| c_err_msg())?;
-        let v: serde_json::Value = serde_json::from_str(&raw).map_err(|e| {
-            format!("probe_open_details: invalid JSON from bridge ({raw:?}): {e}")
-        })?;
+        let v: serde_json::Value = serde_json::from_str(&raw)
+            .map_err(|e| format!("probe_open_details: invalid JSON from bridge ({raw:?}): {e}"))?;
         Ok(ProbeOpenDetails {
             firmware: v["firmware"].as_str().unwrap_or("").to_string(),
             usb_driver: v["usbDriver"].as_str().unwrap_or("Unknown").to_string(),
@@ -305,15 +308,20 @@ pub mod bridge {
         .map_err(BridgeError::Failed)?
         .as_str()
         .map(ToOwned::to_owned)
-        .ok_or_else(|| BridgeError::Failed("invalid update_firmware_json_by_sn response".to_string()))
+        .ok_or_else(|| {
+            BridgeError::Failed("invalid update_firmware_json_by_sn response".to_string())
+        })
     }
 
     pub fn switch_usb_json(index: usize, winusb: bool) -> Result<String, BridgeError> {
-        crate::bridge_sidecar::call("switch_usb_json", json!({ "index": index, "winusb": winusb }))
-            .map_err(BridgeError::Failed)?
-            .as_str()
-            .map(ToOwned::to_owned)
-            .ok_or_else(|| BridgeError::Failed("invalid switch_usb_json response".to_string()))
+        crate::bridge_sidecar::call(
+            "switch_usb_json",
+            json!({ "index": index, "winusb": winusb }),
+        )
+        .map_err(BridgeError::Failed)?
+        .as_str()
+        .map(ToOwned::to_owned)
+        .ok_or_else(|| BridgeError::Failed("invalid switch_usb_json response".to_string()))
     }
 
     pub fn switch_usb_json_by_sn(

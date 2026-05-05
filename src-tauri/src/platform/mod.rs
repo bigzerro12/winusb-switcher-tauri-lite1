@@ -9,7 +9,11 @@ pub fn prepend_to_process_path(dir: &str) {
 
     let current = std::env::var(&path_key).unwrap_or_default();
     if !current.to_lowercase().contains(&dir.to_lowercase()) {
-        let separator = if cfg!(target_os = "windows") { ";" } else { ":" };
+        let separator = if cfg!(target_os = "windows") {
+            ";"
+        } else {
+            ":"
+        };
         // Prepend so our bundled J-Link wins over any stale PATH entries.
         std::env::set_var(&path_key, format!("{}{}{}", dir, separator, current));
     }

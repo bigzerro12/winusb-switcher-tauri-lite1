@@ -1,15 +1,15 @@
 //! J-Link WinUSB Switcher — Tauri application entry point.
 
+mod bridge_sidecar;
+mod bundled_jlink;
 mod commands;
 mod domain;
-mod bridge_sidecar;
-mod logging;
-mod bundled_jlink;
 mod error;
+mod infra;
 mod jlink_ffi;
+mod logging;
 mod platform;
 mod state;
-mod infra;
 
 use state::AppState;
 
@@ -30,13 +30,13 @@ pub fn run() {
         .plugin(log_builder.build());
 
     let builder = builder.invoke_handler(tauri::generate_handler![
-            commands::prepare_bundled_jlink,
-            commands::detect_and_scan,
-            commands::scan_probes,
-            commands::switch_usb_driver,
-            commands::get_arch_info,
-            commands::get_jlink_diagnostics,
-        ]);
+        commands::prepare_bundled_jlink,
+        commands::detect_and_scan,
+        commands::scan_probes,
+        commands::switch_usb_driver,
+        commands::get_arch_info,
+        commands::get_jlink_diagnostics,
+    ]);
 
     builder
         .run(tauri::generate_context!())

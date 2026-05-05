@@ -28,7 +28,9 @@ pub struct JLinkRuntime {
 
 #[cfg(target_os = "windows")]
 fn parent_or_self(p: &Path) -> PathBuf {
-    p.parent().map(Path::to_path_buf).unwrap_or_else(|| p.to_path_buf())
+    p.parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| p.to_path_buf())
 }
 
 #[cfg(target_os = "windows")]
@@ -54,15 +56,14 @@ pub fn prepare(app: &AppHandle, override_dll: Option<PathBuf>) -> AppResult<JLin
         crate::bundled_jlink::resolve_bundled_jlinkarm_dll(app)?
     };
 
-    crate::jlink_ffi::bridge::load(&dll_path)
-        .map_err(|e| {
-            log::warn!(
-                "[bootstrap] bridge_load failed for {}: {}",
-                dll_path.display(),
-                e
-            );
-            AppError::Internal(format!("bridge_load: {}", e))
-        })?;
+    crate::jlink_ffi::bridge::load(&dll_path).map_err(|e| {
+        log::warn!(
+            "[bootstrap] bridge_load failed for {}: {}",
+            dll_path.display(),
+            e
+        );
+        AppError::Internal(format!("bridge_load: {}", e))
+    })?;
 
     std::env::set_var(
         crate::bundled_jlink::WINUSB_JLINK_DLL_PATH_ENV,
@@ -112,15 +113,14 @@ pub fn prepare(app: &AppHandle) -> AppResult<JLinkRuntime> {
             ))
         })?;
 
-    crate::jlink_ffi::bridge::load(&lib_path)
-        .map_err(|e| {
-            log::warn!(
-                "[bootstrap] bridge_load failed for {}: {}",
-                lib_path.display(),
-                e
-            );
-            AppError::Internal(format!("bridge_load: {}", e))
-        })?;
+    crate::jlink_ffi::bridge::load(&lib_path).map_err(|e| {
+        log::warn!(
+            "[bootstrap] bridge_load failed for {}: {}",
+            lib_path.display(),
+            e
+        );
+        AppError::Internal(format!("bridge_load: {}", e))
+    })?;
 
     std::env::set_var(
         crate::bundled_jlink::WINUSB_JLINK_DLL_PATH_ENV,
@@ -265,5 +265,3 @@ udevadm trigger
     let _ = fs::remove_file(&helper);
     Ok(())
 }
-
-

@@ -61,7 +61,9 @@ impl SidecarProcess {
         self.stdin
             .write_all(line.as_bytes())
             .map_err(|e| format!("write req: {}", e))?;
-        self.stdin.flush().map_err(|e| format!("flush req: {}", e))?;
+        self.stdin
+            .flush()
+            .map_err(|e| format!("flush req: {}", e))?;
 
         let mut resp_line = String::new();
         let n = self
@@ -76,7 +78,9 @@ impl SidecarProcess {
         if resp.ok {
             Ok(resp.data.unwrap_or(serde_json::Value::Null))
         } else {
-            Err(resp.error.unwrap_or_else(|| "sidecar op failed".to_string()))
+            Err(resp
+                .error
+                .unwrap_or_else(|| "sidecar op failed".to_string()))
         }
     }
 }
@@ -136,9 +140,8 @@ fn respond<W: Write>(writer: &mut W, response: RpcResponse) {
                 data: None,
                 error: Some(format!("serialize response: {}", e)),
             };
-            serde_json::to_string(&fallback).unwrap_or_else(|_| {
-                "{\"ok\":false,\"error\":\"serialize response\"}".to_string()
-            })
+            serde_json::to_string(&fallback)
+                .unwrap_or_else(|_| "{\"ok\":false,\"error\":\"serialize response\"}".to_string())
         }
     };
     let _ = writer.write_all(line.as_bytes());
@@ -157,11 +160,15 @@ fn handle_request(req: RpcRequest) -> Result<serde_json::Value, String> {
             Ok(serde_json::Value::Bool(true))
         }
         "is_loaded" => Ok(serde_json::Value::Bool(crate::jlink_ffi::bridge_is_loaded())),
-        "last_error" => Ok(serde_json::Value::String(crate::jlink_ffi::last_native_error())),
+        "last_error" => Ok(serde_json::Value::String(
+            crate::jlink_ffi::last_native_error(),
+        )),
         "dll_version" => Ok(crate::jlink_ffi::dll_version_string()
             .map(serde_json::Value::String)
             .unwrap_or(serde_json::Value::Null)),
-        "list_probes_json" => Ok(serde_json::Value::String(crate::jlink_ffi::list_probes_json()?)),
+        "list_probes_json" => Ok(serde_json::Value::String(
+            crate::jlink_ffi::list_probes_json()?,
+        )),
         "probe_open_details" => {
             let index = req.args["index"]
                 .as_u64()
@@ -183,11 +190,16 @@ fn handle_request(req: RpcRequest) -> Result<serde_json::Value, String> {
         "update_firmware_json_by_sn" => {
             let serial_number = req.args["serialNumber"]
                 .as_u64()
-                .ok_or_else(|| "missing serialNumber".to_string())? as u32;
+                .ok_or_else(|| "missing serialNumber".to_string())?
+                as u32;
             let retries = req.args["retries"].as_i64().unwrap_or(0) as i32;
             let retry_delay_ms = req.args["retryDelayMs"].as_u64().unwrap_or(0) as u32;
             Ok(serde_json::Value::String(
-                crate::jlink_ffi::update_firmware_json_by_sn(serial_number, retries, retry_delay_ms)?,
+                crate::jlink_ffi::update_firmware_json_by_sn(
+                    serial_number,
+                    retries,
+                    retry_delay_ms,
+                )?,
             ))
         }
         "switch_usb_json" => {
@@ -195,14 +207,15 @@ fn handle_request(req: RpcRequest) -> Result<serde_json::Value, String> {
                 .as_u64()
                 .ok_or_else(|| "missing index".to_string())? as usize;
             let winusb = req.args["winusb"].as_bool().unwrap_or(false);
-            Ok(serde_json::Value::String(crate::jlink_ffi::switch_usb_json(
-                index, winusb,
-            )?))
+            Ok(serde_json::Value::String(
+                crate::jlink_ffi::switch_usb_json(index, winusb)?,
+            ))
         }
         "switch_usb_json_by_sn" => {
             let serial_number = req.args["serialNumber"]
                 .as_u64()
-                .ok_or_else(|| "missing serialNumber".to_string())? as u32;
+                .ok_or_else(|| "missing serialNumber".to_string())?
+                as u32;
             let winusb = req.args["winusb"].as_bool().unwrap_or(false);
             let retries = req.args["retries"].as_i64().unwrap_or(0) as i32;
             let retry_delay_ms = req.args["retryDelayMs"].as_u64().unwrap_or(0) as u32;

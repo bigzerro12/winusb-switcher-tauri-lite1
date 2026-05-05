@@ -264,4 +264,3 @@ mod tests {
         assert_eq!(req.serial_number.as_deref(), Some("123456789"));
     }
 }
-

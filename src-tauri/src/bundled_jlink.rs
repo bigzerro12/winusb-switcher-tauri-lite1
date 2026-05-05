@@ -102,7 +102,9 @@ pub fn resolve_bundled_jlinkarm_dll(app: &AppHandle) -> AppResult<PathBuf> {
             .join("resources")
             .join("jlink-runtime");
         let candidates = [
-            base.join(JLINK_BUNDLED_VERSION_DIR).join(dev_platform).join(dll_name),
+            base.join(JLINK_BUNDLED_VERSION_DIR)
+                .join(dev_platform)
+                .join(dll_name),
             base.join(dev_platform).join(dll_name),
         ];
         for c in candidates {
@@ -188,4 +190,3 @@ pub fn resolve_bundled_linux_runtime_dir(app: &AppHandle) -> AppResult<PathBuf> 
         platform
     )))
 }
-

@@ -34,10 +34,7 @@ impl AppState {
     /// Returns true exactly once per app session.
     /// Used to run one-time startup maintenance (e.g. firmware ensure).
     pub fn take_firmware_bootstrap_slot(&self) -> bool {
-        let mut v = Self::lock_or_recover(
-            &self.firmware_bootstrap_done,
-            POISONED_BOOTSTRAP_MUTEX,
-        );
+        let mut v = Self::lock_or_recover(&self.firmware_bootstrap_done, POISONED_BOOTSTRAP_MUTEX);
         if *v {
             return false;
         }

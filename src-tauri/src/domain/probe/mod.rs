@@ -115,8 +115,14 @@ pub fn detect_and_scan(
     Ok((status, probes, summary))
 }
 
-pub fn switch_usb(rt: &ActiveRuntime, handle: ProbeHandle, mode: UsbDriverMode) -> AppResult<UsbDriverResult> {
+pub fn switch_usb(
+    rt: &ActiveRuntime,
+    handle: ProbeHandle,
+    mode: UsbDriverMode,
+) -> AppResult<UsbDriverResult> {
     match handle.provider {
-        ProbeProvider::JLink => <JLinkService as ProbeBackend>::switch_usb_driver(rt, handle.probe_index, mode),
+        ProbeProvider::JLink => {
+            <JLinkService as ProbeBackend>::switch_usb_driver(rt, handle.probe_index, mode)
+        }
     }
 }
