@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { prepareBundledJlink } from "./api/commands";
 import { normalizeTauriError, withPlatformSetupHint } from "./api/errors";
 import { BootstrapError, BootstrapPending, ProbeAccessPending } from "./features/bootstrap/screens";
+import { logRendererError } from "./lib/logger";
 import { resizeHeightToContent } from "./lib/windowSizing";
 import { useProbeStore } from "./store/probeStore";
 import Dashboard from "./features/probes/Dashboard";
@@ -30,7 +31,7 @@ export default function App() {
   useEffect(() => {
     if (bootstrap !== "ok") return;
     loadRuntimeAndProbes().catch((err) => {
-      console.error("[App] loadRuntimeAndProbes failed:", err);
+      logRendererError("App", "loadRuntimeAndProbes", err);
     });
   }, [bootstrap, loadRuntimeAndProbes]);
 

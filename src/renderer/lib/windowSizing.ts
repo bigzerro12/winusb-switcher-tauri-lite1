@@ -1,4 +1,5 @@
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
+import { logRendererError } from "./logger";
 
 const BODY_PADDING = 24; // 12px top + 12px bottom (matches body padding in styles.css)
 
@@ -18,7 +19,7 @@ export async function resizeHeightToContent() {
     const currentLogicalWidth = Math.round(physicalSize.width / scale);
     await win.setSize(new LogicalSize(currentLogicalWidth, targetHeight));
   } catch (e) {
-    console.error("[windowSizing] window resize failed:", e);
+    logRendererError("windowSizing", "setSize", e);
   }
 }
 

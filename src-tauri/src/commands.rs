@@ -10,6 +10,7 @@ use tauri::{AppHandle, State};
 use crate::domain::jlink::types::{Probe, ProbeProvider, UsbDriverMode, UsbDriverResult};
 use crate::domain::probe::{self, ProbeHandle};
 use crate::error::{AppError, AppResult};
+use crate::logging::OperationLog;
 use crate::state::AppState;
 
 /// Env var: optional full path to `JLink_x64.dll` / `JLinkARM.dll` for debugging (Windows).
@@ -28,6 +29,7 @@ pub async fn prepare_bundled_jlink(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<String, AppError> {
+    let op = OperationLog::begin("prepare_bundled_jlink");
     let app_clone = app.clone();
     let runtime = match tokio::task::spawn_blocking(move || {
         #[cfg(target_os = "windows")]
@@ -64,23 +66,21 @@ pub async fn prepare_bundled_jlink(
     {
         Ok(Ok(rt)) => rt,
         Ok(Err(e)) => {
-            log::warn!("[cmd] prepare_bundled_jlink failed: {}", e);
+            op.fail(format!("runtime prepare failed: {}", e));
             return Err(e);
         }
         Err(e) => {
-            log::warn!("[cmd] prepare_bundled_jlink task join error: {}", e);
+            op.fail(format!("spawn_blocking join error: {}", e));
             return Err(AppError::Internal(e.to_string()));
         }
     };
 
-    log::info!(
-        "[cmd] prepare_bundled_jlink ok: version={:?}",
+    op.debug(format!(
+        "runtime_lib={} version={:?}",
+        runtime.native_lib_path.display(),
         runtime.version
-    );
-    log::debug!(
-        "[cmd] prepare_bundled_jlink runtime library: {}",
-        runtime.native_lib_path.display()
-    );
+    ));
+    op.ok("runtime prepared");
     state.set_runtime(runtime.clone());
     Ok(runtime.native_lib_path.to_string_lossy().into_owned())
 }
@@ -100,7 +100,7 @@ pub struct SwitchUsbRequest {
 /// Combined detect + scan — called on app startup and after install.
 #[tauri::command]
 pub async fn detect_and_scan(state: State<'_, AppState>) -> Result<serde_json::Value, AppError> {
-    log::debug!("[cmd] detect_and_scan: enter");
+    let op = OperationLog::begin("detect_and_scan");
     let rt = state.get_runtime();
     let run_firmware_bootstrap = state.take_firmware_bootstrap_slot();
 
@@ -112,27 +112,28 @@ pub async fn detect_and_scan(state: State<'_, AppState>) -> Result<serde_json::V
         {
             Ok(Ok(v)) => v,
             Ok(Err(e)) => {
-                log::warn!("[cmd] detect_and_scan: scan failed: {}", e);
+                op.fail(format!("scan failed: {}", e));
                 return Err(e);
             }
             Err(e) => {
-                log::warn!("[cmd] detect_and_scan: blocking task failed: {}", e);
+                op.fail(format!("spawn_blocking join error: {}", e));
                 return Err(e.into());
             }
         };
 
-    log::debug!(
-        "[cmd] detect_and_scan: ok (ready={}, probes={})",
+    op.ok(format!(
+        "ready={} probes={} firmware_summary={}",
         status.ready,
-        probes.len()
-    );
+        probes.len(),
+        firmware_update
+    ));
     Ok(serde_json::json!({ "status": status, "probes": probes, "firmwareUpdate": firmware_update }))
 }
 
 /// Scan probes only (runtime already prepared).
 #[tauri::command]
 pub async fn scan_probes(state: State<'_, AppState>) -> Result<Vec<Probe>, AppError> {
-    log::debug!("[cmd] scan_probes: enter");
+    let op = OperationLog::begin("scan_probes");
     let rt = state.get_runtime();
     let probes = match tokio::task::spawn_blocking(move || -> AppResult<Vec<Probe>> {
         let rt_ref = probe::ensure_ready(rt.as_ref())?;
@@ -142,15 +143,15 @@ pub async fn scan_probes(state: State<'_, AppState>) -> Result<Vec<Probe>, AppEr
     {
         Ok(Ok(probes)) => probes,
         Ok(Err(e)) => {
-            log::warn!("[cmd] scan_probes failed: {}", e);
+            op.fail(format!("scan failed: {}", e));
             return Err(e);
         }
         Err(e) => {
-            log::warn!("[cmd] scan_probes: blocking task failed: {}", e);
+            op.fail(format!("spawn_blocking join error: {}", e));
             return Err(e.into());
         }
     };
-    log::debug!("[cmd] scan_probes: ok (count={})", probes.len());
+    op.ok(format!("probes={}", probes.len()));
     Ok(probes)
 }
 
@@ -161,16 +162,13 @@ pub async fn switch_usb_driver(
     request: SwitchUsbRequest,
     state: State<'_, AppState>,
 ) -> Result<UsbDriverResult, AppError> {
+    let op = OperationLog::begin("switch_usb_driver");
     let handle = ProbeHandle {
         provider: request.provider,
         probe_index: request.probe_index,
     };
     let mode = request.mode;
-    log::info!(
-        "[cmd] switch_usb_driver: probe={:?} mode={:?}",
-        handle,
-        mode
-    );
+    op.debug(format!("probe={:?} mode={:?}", handle, mode));
     let rt = state.get_runtime();
     let result = match tokio::task::spawn_blocking(move || -> AppResult<UsbDriverResult> {
         let rt_ref = probe::ensure_ready(rt.as_ref())?;
@@ -198,22 +196,19 @@ pub async fn switch_usb_driver(
     {
         Ok(Ok(r)) => r,
         Ok(Err(e)) => {
-            log::warn!("[cmd] switch_usb_driver failed: {}", e);
+            op.fail(format!("switch failed: {}", e));
             return Err(e);
         }
         Err(e) => {
-            log::warn!("[cmd] switch_usb_driver: blocking task failed: {}", e);
+            op.fail(format!("spawn_blocking join error: {}", e));
             return Err(e.into());
         }
     };
 
     if result.success {
-        log::debug!("[cmd] switch_usb_driver: ok");
+        op.ok("switch applied");
     } else {
-        log::warn!(
-            "[cmd] switch_usb_driver: reported failure: {:?}",
-            result.error
-        );
+        op.warn(format!("reported failure: {:?}", result.error));
     }
     Ok(result)
 }
