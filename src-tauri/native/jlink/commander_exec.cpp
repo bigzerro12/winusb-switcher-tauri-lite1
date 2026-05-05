@@ -28,6 +28,14 @@ namespace commander_exec {
 // parse success reliably (mirrors what you see in J-Link Commander).
 thread_local std::string* g_capture = nullptr;
 
+static std::string _ExecExecCommand(
+    JLinkARMDLL& a,
+    int index,
+    const std::vector<JLINKARM_EMU_CONNECT_INFO>& list,
+    const char* exec_cmd,
+    std::string& out_err
+);
+
 static void log_cb(const char* s) {
   if (s) {
     std::fputs(s, stderr);
@@ -353,7 +361,7 @@ static bool _RebootOutputMeansNotSupported(const std::string& reboot_out) {
 //  Commander-style "Exec" operations
 // ---------------------------------------------------------------------------
 
-std::string _ExecExecCommand(
+static std::string _ExecExecCommand(
     JLinkARMDLL& a,
     int index,
     const std::vector<JLINKARM_EMU_CONNECT_INFO>& list,

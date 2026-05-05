@@ -11,6 +11,8 @@
     "dev": "vite",
     "check:version-sync": "node scripts/check-version-sync.mjs",
     "build": "tsc && vite build",
+    "test": "vitest",
+    "test:run": "vitest run",
     "lint": "eslint \"src/**/*.{ts,tsx}\"",
     "stage-jlink": "node scripts/stage-jlink-for-build.mjs",
     "stage-jlink-runtime": "node scripts/stage-jlink-runtime-for-bundle.mjs",
@@ -42,6 +44,7 @@
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.2",
-    "vite": "^6.0.7"
+    "vite": "^6.0.7",
+    "vitest": "^2.1.8"
   }
 }

@@ -202,6 +202,15 @@ jobs:
           pattern: bundle-*
           merge-multiple: true
 
+      - name: Generate release checksums
+        run: |
+          shopt -s globstar nullglob
+          : > SHA256SUMS.txt
+          for f in **/*.msi **/*.exe **/*.AppImage **/*.deb; do
+            sha256sum "$f" >> SHA256SUMS.txt
+          done
+          test -s SHA256SUMS.txt
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -214,5 +223,6 @@ jobs:
             **/*.exe
             **/*.AppImage
             **/*.deb
+            SHA256SUMS.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

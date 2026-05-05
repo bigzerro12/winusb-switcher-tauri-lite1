@@ -22,6 +22,17 @@ fn merge_warning_detail(detail: Option<String>, warning: Option<String>) -> Opti
     }
 }
 
+fn redact_serial_for_logs(serial: &str) -> String {
+    let trimmed = serial.trim();
+    if trimmed.is_empty() {
+        return "<empty>".to_string();
+    }
+    if trimmed.len() <= 4 {
+        return "****".to_string();
+    }
+    format!("***{}", &trimmed[trimmed.len() - 4..])
+}
+
 fn switch_with_best_effort_firmware_update<FU, FS>(
     target_label: &str,
     update: FU,
@@ -203,19 +214,24 @@ impl JLinkService {
         serial_number: &str,
         mode: UsbDriverMode,
     ) -> AppResult<UsbDriverResult> {
-        log::debug!("[jlink] switch_usb_driver_by_serial: sn={} mode={:?}", serial_number, mode);
+        let sn_log = redact_serial_for_logs(serial_number);
+        log::debug!(
+            "[jlink] switch_usb_driver_by_serial: sn={} mode={:?}",
+            sn_log,
+            mode
+        );
         Self::ensure_bridge_loaded()?;
 
         let sn_u32: u32 = serial_number
             .trim()
             .parse()
-            .map_err(|_| AppError::Internal(format!("invalid serialNumber: {}", serial_number)))?;
+            .map_err(|_| AppError::Internal("invalid serialNumber".to_string()))?;
 
         // During firmware update / reboot, the probe may temporarily disappear from EMU_GetList.
         // Retry list resolution for a short time.
         let retries = 20;
         let retry_delay_ms = 250;
-        let label = format!("sn={}", serial_number);
+        let label = format!("sn={}", sn_log);
         Ok(switch_with_best_effort_firmware_update(
             &label,
             || update_firmware_via_bridge_by_sn(sn_u32, retries, retry_delay_ms),
@@ -316,10 +332,10 @@ fn log_probes_summary(source: &str, probes: &[Probe]) {
     );
     for (i, p) in probes.iter().enumerate() {
         let fw = p.firmware.as_deref().unwrap_or("(none)");
-        log::debug!(
+        log::trace!(
             "[jlink]   [{}] sn={} nick={} product={} conn={} driver={} firmware={}",
             i,
-            p.serial_number,
+            redact_serial_for_logs(&p.serial_number),
             if p.nick_name.is_empty() { "-" } else { &p.nick_name },
             if p.product_name.is_empty() { "-" } else { &p.product_name },
             if p.connection.is_empty() { "-" } else { &p.connection },
@@ -375,7 +391,7 @@ fn scan_probes_via_bridge() -> AppResult<Vec<Probe>> {
                     log::debug!(
                         "[jlink] probe_open_details transient OpenEx error index={} sn={} — {} (retrying once)",
                         index,
-                        serial,
+                        redact_serial_for_logs(&serial),
                         msg
                     );
                     std::thread::sleep(std::time::Duration::from_millis(250));
@@ -388,7 +404,7 @@ fn scan_probes_via_bridge() -> AppResult<Vec<Probe>> {
                             log::warn!(
                                 "[jlink] probe_open_details failed after retry index={} sn={} — {} (using discovery if present)",
                                 index,
-                                serial,
+                                redact_serial_for_logs(&serial),
                                 e2
                             );
                             (discovery_fw.clone(), "discovery_after_err", "Unknown".to_string())
@@ -398,7 +414,7 @@ fn scan_probes_via_bridge() -> AppResult<Vec<Probe>> {
                     log::warn!(
                         "[jlink] probe_open_details failed index={} sn={} — {} (using discovery if present)",
                         index,
-                        serial,
+                        redact_serial_for_logs(&serial),
                         msg
                     );
                     (discovery_fw.clone(), "discovery_after_err", "Unknown".to_string())
@@ -409,7 +425,7 @@ fn scan_probes_via_bridge() -> AppResult<Vec<Probe>> {
         log::debug!(
             "[jlink] probe[{}] sn={} fw_source={} read_ms={:.1}",
             index,
-            serial,
+            redact_serial_for_logs(&serial),
             fw_src,
             t0.elapsed().as_secs_f64() * 1000.0
         );

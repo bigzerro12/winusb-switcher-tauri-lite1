@@ -151,11 +151,6 @@ fn ensure_linux_udev_rules(app: &AppHandle) -> AppResult<()> {
     const RULES_DST: &str = "/etc/udev/rules.d/99-jlink.rules";
     const RULES_BUNDLED: &str = "resources/segger-99-jlink.rules";
 
-    // Best-effort: if rules already exist, don't prompt the user.
-    if std::path::Path::new(RULES_DST).is_file() {
-        return Ok(());
-    }
-
     let res_dir = app
         .path()
         .resource_dir()
@@ -169,6 +164,18 @@ fn ensure_linux_udev_rules(app: &AppHandle) -> AppResult<()> {
         );
         return Ok(());
     }
+    let bytes = fs::read(&bundled_rules)?;
+
+    // Best-effort: only prompt when rules are missing or stale.
+    if let Ok(existing) = fs::read(RULES_DST) {
+        if existing == bytes {
+            return Ok(());
+        }
+        log::info!(
+            "[bootstrap] existing udev rules differ from bundled copy; attempting update ({})",
+            RULES_DST
+        );
+    }
 
     // Write to a temp file so pkexec can read it.
     let mut tmp = std::env::temp_dir();
@@ -176,7 +183,6 @@ fn ensure_linux_udev_rules(app: &AppHandle) -> AppResult<()> {
         "winusb-switcher-lite-99-jlink-{}.rules",
         std::process::id()
     ));
-    let bytes = fs::read(&bundled_rules)?;
     {
         let mut f = fs::OpenOptions::new()
             .create(true)

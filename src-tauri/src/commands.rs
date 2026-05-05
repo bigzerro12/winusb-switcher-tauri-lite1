@@ -29,93 +29,60 @@ pub async fn prepare_bundled_jlink(
     state: State<'_, AppState>,
 ) -> Result<String, AppError> {
     let app_clone = app.clone();
-
-    #[cfg(target_os = "windows")]
-    {
-        log::info!("[cmd] prepare_bundled_jlink (Windows)");
-        let override_path = if cfg!(debug_assertions) {
-            std::env::var(WINUSB_JLINK_DLL_OVERRIDE_ENV).ok()
-        } else {
-            if std::env::var(WINUSB_JLINK_DLL_OVERRIDE_ENV).is_ok() {
-                log::warn!(
-                    "[cmd] {} is ignored in release builds",
-                    WINUSB_JLINK_DLL_OVERRIDE_ENV
-                );
-            }
-            None
-        };
-
-        let blocking = tokio::task::spawn_blocking(move || {
+    let runtime = match tokio::task::spawn_blocking(move || {
+        #[cfg(target_os = "windows")]
+        {
+            log::info!("[cmd] prepare_bundled_jlink (Windows)");
+            let override_path = if cfg!(debug_assertions) {
+                std::env::var(WINUSB_JLINK_DLL_OVERRIDE_ENV).ok()
+            } else {
+                if std::env::var(WINUSB_JLINK_DLL_OVERRIDE_ENV).is_ok() {
+                    log::warn!(
+                        "[cmd] {} is ignored in release builds",
+                        WINUSB_JLINK_DLL_OVERRIDE_ENV
+                    );
+                }
+                None
+            };
             let override_dll = override_path.as_deref().map(std::path::PathBuf::from);
             crate::infra::runtime::bundled::prepare(&app_clone, override_dll)
-        })
-        .await;
-
-        let runtime = match blocking {
-            Ok(Ok(rt)) => rt,
-            Ok(Err(e)) => {
-                log::warn!("[cmd] prepare_bundled_jlink failed: {}", e);
-                return Err(e);
-            }
-            Err(e) => {
-                log::warn!("[cmd] prepare_bundled_jlink task join error: {}", e);
-                return Err(AppError::Internal(e.to_string()));
-            }
-        };
-
-        log::info!(
-            "[cmd] prepare_bundled_jlink ok (Windows): version={:?}",
-            runtime.version
-        );
-        log::debug!(
-            "[cmd] prepare_bundled_jlink runtime library: {}",
-            runtime.native_lib_path.display()
-        );
-        state.set_runtime(runtime.clone());
-        Ok(runtime.native_lib_path.to_string_lossy().into_owned())
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
+        }
         #[cfg(target_os = "linux")]
         {
             log::info!("[cmd] prepare_bundled_jlink (Linux)");
-            let blocking =
-                tokio::task::spawn_blocking(move || crate::infra::runtime::bundled::prepare(&app_clone))
-                    .await;
-
-            let runtime = match blocking {
-                Ok(Ok(rt)) => rt,
-                Ok(Err(e)) => {
-                    log::warn!("[cmd] prepare_bundled_jlink failed: {}", e);
-                    return Err(e);
-                }
-                Err(e) => {
-                    log::warn!("[cmd] prepare_bundled_jlink task join error: {}", e);
-                    return Err(AppError::Internal(e.to_string()));
-                }
-            };
-
-            log::info!(
-                "[cmd] prepare_bundled_jlink ok (Linux): version={:?}",
-                runtime.version
-            );
-            log::debug!(
-                "[cmd] prepare_bundled_jlink runtime library: {}",
-                runtime.native_lib_path.display()
-            );
-            state.set_runtime(runtime.clone());
-            Ok(runtime.native_lib_path.to_string_lossy().into_owned())
+            crate::infra::runtime::bundled::prepare(&app_clone)
         }
-
-        #[cfg(not(target_os = "linux"))]
+        #[cfg(not(any(target_os = "windows", target_os = "linux")))]
         {
             log::warn!("[cmd] prepare_bundled_jlink: unsupported OS");
             Err(AppError::Runtime(
                 "Bundled J-Link runtime is not implemented for this OS yet".to_string(),
             ))
         }
-    }
+    })
+    .await
+    {
+        Ok(Ok(rt)) => rt,
+        Ok(Err(e)) => {
+            log::warn!("[cmd] prepare_bundled_jlink failed: {}", e);
+            return Err(e);
+        }
+        Err(e) => {
+            log::warn!("[cmd] prepare_bundled_jlink task join error: {}", e);
+            return Err(AppError::Internal(e.to_string()));
+        }
+    };
+
+    log::info!(
+        "[cmd] prepare_bundled_jlink ok: version={:?}",
+        runtime.version
+    );
+    log::debug!(
+        "[cmd] prepare_bundled_jlink runtime library: {}",
+        runtime.native_lib_path.display()
+    );
+    state.set_runtime(runtime.clone());
+    Ok(runtime.native_lib_path.to_string_lossy().into_owned())
 }
 
 /// Single payload for `switch_usb_driver` IPC (`probeIndex`, `mode`, optional `provider`).

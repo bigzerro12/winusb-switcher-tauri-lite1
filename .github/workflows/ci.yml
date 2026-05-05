@@ -25,6 +25,8 @@ jobs:
         run: yarn check:version-sync
       - name: ESLint
         run: yarn lint
+      - name: Frontend tests
+        run: yarn test:run
       - name: Typecheck and build frontend
         run: yarn build
 
@@ -53,7 +55,9 @@ jobs:
             libssl-dev
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy
+          components: clippy, rustfmt
+      - name: Cargo fmt
+        run: cargo fmt --all -- --check
       - name: Cargo clippy
         run: cargo clippy --locked --all-targets -- -D warnings
       - name: Cargo test
