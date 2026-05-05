@@ -1,24 +1,16 @@
-//! Probe domain: backend trait, routing, and shared handles.
+//! Probe domain entry point.
 //!
-//! Tauri commands should depend on this module instead of `JLinkService` directly.
-//! J-Link remains the only backend today; `ProbeHandle::provider` is the extension point.
+//! Commands should call this module, not backend implementations directly.
+//! Today there is one backend (J-Link), but the provider field keeps routing extensible.
 //!
-//! ## Adding another probe family (e.g. E2)
+//! To add another probe family later:
+//! - add a `ProbeProvider` variant
+//! - add a `domain/<vendor>/` backend implementation
+//! - wire dispatch in `switch_usb` (and related command paths)
 //!
-//! - Add a `ProbeProvider` variant, `domain/<vendor>/` with `ProbeBackend`, and parallel
-//!   `native/<vendor>/` + Rust FFI if the vendor ships a C/C++ API.
-//! - Replace [`ActiveRuntime`] `type` alias with an `enum` once more than one runtime
-//!   must be prepared in the same session; extend [`switch_usb`] (and commands) with
-//!   `match handle.provider { ... }` arms.
-//!
-//! ## Operational limits (intentional for this codebase)
-//!
-//! - **In-process native bridge:** SEGGER code runs in the app process; a hard crash in
-//!   the DLL/native layer can take down the UI. A sidecar binary would isolate that risk.
-//! - **No CI hardware tests:** `cargo test` covers pure Rust and JSON parsing; USB/probe
-//!   flows still need manual or lab automation with real devices.
-//! - **Platform feature gaps:** USB stack switching is centered on what J-Link exposes;
-//!   Linux paths differ from Windows (udev, permissions) and are documented in UX copy.
+//! Current limits:
+//! - CI covers parsing/unit behavior but not hardware-in-the-loop switching.
+//! - USB behavior still depends on platform policy and connected probe firmware.
 
 use serde::{Deserialize, Serialize};
 
@@ -29,16 +21,12 @@ use crate::domain::jlink::types::{
 use crate::error::AppResult;
 use crate::infra::runtime::bundled::JLinkRuntime;
 
-// ─── Handle (IPC / routing) ─────────────────────────────────────────────────
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ProbeHandle {
     pub provider: ProbeProvider,
     pub probe_index: usize,
 }
-
-// ─── Backend trait ───────────────────────────────────────────────────────────
 
 pub trait ProbeBackend {
     type Runtime;
@@ -55,10 +43,8 @@ pub trait ProbeBackend {
     ) -> AppResult<UsbDriverResult>;
 }
 
-/// Prepared runtime for the active backend(s). Becomes an enum when multiple backends exist.
+/// Runtime for the active backend.
 pub type ActiveRuntime = JLinkRuntime;
-
-// ─── Dispatch (single place for `match provider { ... }` later) ──────────────
 
 pub fn diagnostics_json(runtime: Option<&ActiveRuntime>) -> serde_json::Value {
     <JLinkService as ProbeBackend>::diagnostics_json(runtime)
@@ -101,8 +87,7 @@ pub fn detect_and_scan(
 
     let probes = scan_probes(rt)?;
 
-    // NOTE: We intentionally do not run any firmware update routine during detect+scan.
-    // Firmware update is performed only when explicitly invoked by higher-level workflows.
+    // Detect-and-scan is read-only. Firmware updates happen only in explicit switch/update flows.
     let _ = run_firmware_bootstrap; // keep signature stable; flag is interpreted by caller.
 
     let summary = serde_json::json!({

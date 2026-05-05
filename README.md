@@ -41,6 +41,26 @@ The app ships with a bundled SEGGER runtime and firmware assets. It does not inc
 
 ---
 
+## Project structure
+
+```
+.
+├─ src/
+│  ├─ renderer/              # React UI (features, store, API invoke wrappers)
+│  └─ shared/                # Shared TS types/constants used by renderer
+├─ src-tauri/
+│  ├─ src/                   # Rust backend (commands, domain logic, runtime bootstrap)
+│  ├─ native/jlink/          # C++ static bridge library that talks to SEGGER APIs
+│  ├─ resources/
+│  │  ├─ jlink-runtime/      # Full runtime tree used in dev
+│  │  └─ jlink-runtime-bundled/ # Staged subset bundled into releases
+│  └─ tauri.conf*.json       # Base config + dev/autogen overrides
+├─ scripts/                  # Build/dev helpers (port selection, staging runtime)
+└─ .github/workflows/         # CI + release pipelines
+```
+
+---
+
 ## Runtime bundle layout
 
 Bundled runtime content is sourced from `src-tauri/resources/jlink-runtime/`.

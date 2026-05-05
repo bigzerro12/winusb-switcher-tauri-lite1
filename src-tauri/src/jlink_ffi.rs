@@ -48,6 +48,7 @@ unsafe extern "C" {
 
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 unsafe fn c_err_msg() -> String {
+    // Bridge owns the error buffer lifetime; we only read a borrowed C string here.
     let e = jlink_bridge_last_error();
     if e.is_null() {
         "unknown native error".to_string()
@@ -68,6 +69,7 @@ unsafe fn take_c_str(ptr: *mut c_char) -> Option<String> {
     if ptr.is_null() {
         return None;
     }
+    // The bridge allocates returned strings; copy into Rust and free through the bridge API.
     let s = CStr::from_ptr(ptr).to_string_lossy().into_owned();
     jlink_bridge_free_string(ptr);
     Some(s)

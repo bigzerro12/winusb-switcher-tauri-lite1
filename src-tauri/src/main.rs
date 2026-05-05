@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
+    // The same binary runs in sidecar mode when spawned by the main process.
     if std::env::args().any(|a| a == "--jlink-sidecar") {
         std::process::exit(winusb_switcher_lite_lib::run_jlink_sidecar());
     }

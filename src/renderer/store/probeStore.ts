@@ -70,8 +70,7 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
     try {
       const result = await detectAndScan();
 
-      // Fresh scan from the bridge — drop UI-only driver overrides so USB DRIVER / button state
-      // match JLINKARM_ReadEmuConfigMem again (stale WinUSB overrides used to keep the switch disabled).
+      // Reset local driver overrides so UI state always reflects fresh bridge data.
       const probes = result.probes;
       const selectedProbeId = preserveSelection(probes, get().selectedProbeId);
 
@@ -86,13 +85,12 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
         ...resetUsbOperationStatus(),
       });
 
-      // If firmware strings are missing on the first scan (common right after Linux udev setup
-      // or during cold start), retry silently a few times so the UI fills in without requiring
-      // the user to hit Refresh.
+      // Firmware can be temporarily unavailable on cold start; retry quietly.
       const needsFirmwareRetry = probes.some((p) => !p.firmware);
       if (result.status.ready && needsFirmwareRetry) {
         set({ isFirmwareRefreshing: true });
         const selectedBefore = get().selectedProbeId;
+        // Short backoff ladder for cold-start probes that report firmware a bit late.
         for (const delayMs of [600, 1400, 2600]) {
           await new Promise((r) => setTimeout(r, delayMs));
           try {
@@ -143,7 +141,9 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
       const probes = await scanProbes();
       const selectedProbeId = preserveSelection(probes, get().selectedProbeId);
       set({ probes, selectedProbeId, driverOverrides: {} });
-    } catch { /* ignore */ }
+    } catch {
+      // Silent refresh is best-effort; UI state is left unchanged on errors.
+    }
   },
 
   selectProbe: (id) => {
@@ -190,7 +190,7 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
       }
 
       const probes = get().probes;
-      const expectedCount = probes.length; // after reboot, transient scans can be incomplete
+      const expectedCount = probes.length; // reboot can temporarily reduce scan results
       const probeRow = probes.find((p) => p.id === probeId);
       if (probeRow) {
         const newDriver: DriverType = mode === "winUsb" ? "WinUSB" : "SEGGER";
@@ -200,12 +200,7 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
         });
       }
 
-      // After switching, the probe usually reboots. During this window, scanning may only
-      // return a subset of probes (e.g. 1/2). Poll for a short time and keep the largest
-      // scan result so the UI doesn't get stuck showing fewer rows.
-      //
-      // Important UX: never shrink the visible list during the reboot window.
-      // Keep showing the pre-switch list until we get >= that many probes back.
+      // Keep list size stable while probes re-enumerate after switching.
       await new Promise((resolve) => setTimeout(resolve, 900));
       const overrides = get().driverOverrides;
       const selectedBefore = get().selectedProbeId;
@@ -214,7 +209,7 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
       while (Date.now() < deadline) {
         try {
           const cur = applyDriverOverrides(await scanProbes(), overrides);
-          // Only update if we are not shrinking the list.
+          // Do not shrink visible rows during the reconnect window.
           if (cur.length >= best.length) {
             best = cur;
             const selectedProbeId = preserveSelection(best, selectedBefore);
@@ -227,7 +222,7 @@ export const useProbeStore = create<ProbeState>((set, get) => ({
         await new Promise((r) => setTimeout(r, 350));
       }
 
-      // Re-read USB driver (and firmware) from the bridge so the WinUSB button matches hardware truth.
+      // Final reconciliation with bridge data once the reconnect window settles.
       try {
         const fresh = await scanProbes();
         if (fresh.length >= best.length) {

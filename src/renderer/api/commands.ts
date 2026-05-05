@@ -1,8 +1,5 @@
 /**
- * Thin wrappers around Tauri `invoke()` for the backend commands.
- *
- * Each wrapper validates and normalizes the response via `./contracts` so the
- * rest of the renderer always sees well-typed, UI-ready values.
+ * Small wrappers around Tauri `invoke()` that validate backend responses.
  */
 
 import { invoke } from "@tauri-apps/api/core";

@@ -1,9 +1,8 @@
-//! Bundled SEGGER J-Link runtime resolution helpers.
+//! Resolve bundled SEGGER J-Link runtime paths.
 //!
-//! Product decision: **no install/download/extract**.
-//! We load J-Link runtime files from `src-tauri/resources/jlink-runtime/...` in **dev**
-//! (full tree), and from **`jlink-runtime-bundled/`** first in **packaged** builds
-//! (single-arch subtree staged at build time).
+//! The app never downloads or installs SEGGER content at runtime.
+//! Development uses `resources/jlink-runtime/`.
+//! Packaged builds prefer `resources/jlink-runtime-bundled/`.
 
 use std::path::{Path, PathBuf};
 
@@ -15,10 +14,8 @@ use crate::error::{AppError, AppResult};
 pub const WINUSB_JLINK_DLL_PATH_ENV: &str = "WINUSB_JLINK_DLL_PATH";
 
 // Supported bundled layouts:
-//  A) Versioned:
-//     resources/jlink-runtime/jlink-v936/{windows-64,windows-32,linux-64,linux-32}/...
-//  B) Unversioned:
-//     resources/jlink-runtime/{windows-64,windows-32,linux-64,linux-32}/...
+// A) Versioned:   resources/jlink-runtime/jlink-v936/<platform>/...
+// B) Unversioned: resources/jlink-runtime/<platform>/...
 const JLINK_BUNDLED_VERSION_DIR: &str = "jlink-v936";
 
 /// Slim install tree (preferred in release) then full repo-style tree.

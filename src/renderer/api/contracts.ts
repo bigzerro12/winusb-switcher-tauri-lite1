@@ -1,11 +1,7 @@
 /**
- * IPC contract validators and normalizers.
+ * Runtime validators for data returned by Rust commands.
  *
- * Each `parseX(raw)` helper:
- *   1. Validates that `raw` matches the expected Rust response shape.
- *   2. Normalizes it into the UI-facing type (e.g. arbitrary `driver` string → `DriverType`).
- *
- * Throwing here indicates a Rust ↔ TypeScript schema drift, not a user error.
+ * These checks protect the UI from schema drift between backend and frontend.
  */
 
 import type {
@@ -16,8 +12,6 @@ import type {
   ProviderType,
   UsbDriverResult,
 } from "@shared/types";
-
-// ─── Primitive guards ────────────────────────────────────────────────────────
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
@@ -35,8 +29,6 @@ function isBoolean(v: unknown): v is boolean {
 function isOptional<T>(v: unknown, isT: (x: unknown) => x is T): v is T | null | undefined {
   return v === undefined || v === null || isT(v);
 }
-
-// ─── Domain guards ───────────────────────────────────────────────────────────
 
 function isProviderType(v: unknown): v is ProviderType {
   return v === "JLink";
@@ -83,8 +75,6 @@ function isUsbDriverResult(v: unknown): v is UsbDriverResult {
   );
 }
 
-// ─── Normalization ───────────────────────────────────────────────────────────
-
 function toDriverType(driver: string): DriverType {
   return driver === "SEGGER" || driver === "WinUSB" ? driver : "Unknown";
 }
@@ -92,8 +82,6 @@ function toDriverType(driver: string): DriverType {
 function normalizeProbe(raw: RawProbe): Probe {
   return { ...raw, driver: toDriverType(raw.driver) };
 }
-
-// ─── Public parsers (validate + normalize) ───────────────────────────────────
 
 function contractError(command: string): Error {
   return new Error(`internal: invalid ${command} response shape`);

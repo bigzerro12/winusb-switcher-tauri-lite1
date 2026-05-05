@@ -364,6 +364,69 @@ fn log_probes_summary(source: &str, probes: &[Probe]) {
     }
 }
 
+fn read_probe_open_details_with_retry<F>(
+    index: usize,
+    serial: &str,
+    discovery_fw: &Option<String>,
+    try_read: F,
+) -> (Option<String>, &'static str, String)
+where
+    F: Fn() -> Result<ProbeOpenDetails, BridgeError>,
+{
+    match try_read() {
+        Ok(d) if !d.firmware.is_empty() => (Some(d.firmware), "bridge_openex", d.usb_driver),
+        Ok(d) => (discovery_fw.clone(), "discovery_only", d.usb_driver),
+        Err(e) => {
+            // OpenEx can fail transiently during cold start and immediate re-enumeration windows.
+            let msg = e.to_string();
+            let transient = msg.contains("Cannot connect")
+                || msg.contains("Could not read J-Link capabilities")
+                || msg.contains("Communication timed out");
+
+            if !transient {
+                log::warn!(
+                    "[jlink] probe_open_details failed index={} sn={} — {} (using discovery if present)",
+                    index,
+                    redact_serial_for_logs(serial),
+                    msg
+                );
+                return (
+                    discovery_fw.clone(),
+                    "discovery_after_err",
+                    "Unknown".to_string(),
+                );
+            }
+
+            log::debug!(
+                "[jlink] probe_open_details transient OpenEx error index={} sn={} — {} (retrying once)",
+                index,
+                redact_serial_for_logs(serial),
+                msg
+            );
+            std::thread::sleep(std::time::Duration::from_millis(250));
+            match try_read() {
+                Ok(d) if !d.firmware.is_empty() => {
+                    (Some(d.firmware), "bridge_openex_retry", d.usb_driver)
+                }
+                Ok(d) => (discovery_fw.clone(), "discovery_only_retry", d.usb_driver),
+                Err(e2) => {
+                    log::warn!(
+                        "[jlink] probe_open_details failed after retry index={} sn={} — {} (using discovery if present)",
+                        index,
+                        redact_serial_for_logs(serial),
+                        e2
+                    );
+                    (
+                        discovery_fw.clone(),
+                        "discovery_after_err",
+                        "Unknown".to_string(),
+                    )
+                }
+            }
+        }
+    }
+}
+
 fn scan_probes_via_bridge() -> AppResult<Vec<Probe>> {
     use serde_json::Value;
 
@@ -397,61 +460,7 @@ fn scan_probes_via_bridge() -> AppResult<Vec<Probe>> {
             || -> Result<ProbeOpenDetails, BridgeError> { bridge::probe_open_details(index) };
 
         let (firmware, fw_src, driver_label): (Option<String>, &'static str, String) =
-            match try_read() {
-                Ok(d) if !d.firmware.is_empty() => {
-                    (Some(d.firmware), "bridge_openex", d.usb_driver)
-                }
-                Ok(d) => (discovery_fw.clone(), "discovery_only", d.usb_driver),
-                Err(e) => {
-                    // On cold start (or right after udev install), OpenEx may fail transiently.
-                    // Retry once quickly to avoid "firmware missing until refresh".
-                    let msg = e.to_string();
-                    let transient = msg.contains("Cannot connect")
-                        || msg.contains("Could not read J-Link capabilities")
-                        || msg.contains("Communication timed out");
-
-                    if transient {
-                        log::debug!(
-                        "[jlink] probe_open_details transient OpenEx error index={} sn={} — {} (retrying once)",
-                        index,
-                        redact_serial_for_logs(&serial),
-                        msg
-                    );
-                        std::thread::sleep(std::time::Duration::from_millis(250));
-                        match try_read() {
-                            Ok(d) if !d.firmware.is_empty() => {
-                                (Some(d.firmware), "bridge_openex_retry", d.usb_driver)
-                            }
-                            Ok(d) => (discovery_fw.clone(), "discovery_only_retry", d.usb_driver),
-                            Err(e2) => {
-                                log::warn!(
-                                "[jlink] probe_open_details failed after retry index={} sn={} — {} (using discovery if present)",
-                                index,
-                                redact_serial_for_logs(&serial),
-                                e2
-                            );
-                                (
-                                    discovery_fw.clone(),
-                                    "discovery_after_err",
-                                    "Unknown".to_string(),
-                                )
-                            }
-                        }
-                    } else {
-                        log::warn!(
-                        "[jlink] probe_open_details failed index={} sn={} — {} (using discovery if present)",
-                        index,
-                        redact_serial_for_logs(&serial),
-                        msg
-                    );
-                        (
-                            discovery_fw.clone(),
-                            "discovery_after_err",
-                            "Unknown".to_string(),
-                        )
-                    }
-                }
-            };
+            read_probe_open_details_with_retry(index, &serial, &discovery_fw, try_read);
 
         log::debug!(
             "[jlink] probe[{}] sn={} fw_source={} read_ms={:.1}",
@@ -668,7 +677,7 @@ mod tests {
     };
     use crate::domain::jlink::types::FirmwareUpdateResult;
 
-    // ─── Version + firmware string helpers ───────────────────────────────
+    // Version and firmware string helpers.
 
     #[test]
     fn format_version_for_ui_parses_build_numbers() {
@@ -704,7 +713,7 @@ mod tests {
         assert_eq!(parse_discovery_firmware_string("   "), "".to_string());
     }
 
-    // ─── Firmware update response parser ─────────────────────────────────
+    // Firmware update response parser.
 
     #[test]
     fn firmware_update_response_updated_status_returns_updated() {
@@ -766,7 +775,7 @@ mod tests {
         }
     }
 
-    // ─── Switch USB response parser ──────────────────────────────────────
+    // Switch USB response parser.
 
     #[test]
     fn switch_usb_response_success_normalizes_empty_strings_to_none() {

@@ -13,6 +13,20 @@ struct RpcRequest {
 }
 
 #[cfg(any(target_os = "windows", target_os = "linux"))]
+mod op {
+    pub const LOAD: &str = "load";
+    pub const IS_LOADED: &str = "is_loaded";
+    pub const LAST_ERROR: &str = "last_error";
+    pub const DLL_VERSION: &str = "dll_version";
+    pub const LIST_PROBES_JSON: &str = "list_probes_json";
+    pub const PROBE_OPEN_DETAILS: &str = "probe_open_details";
+    pub const UPDATE_FIRMWARE_JSON: &str = "update_firmware_json";
+    pub const UPDATE_FIRMWARE_JSON_BY_SN: &str = "update_firmware_json_by_sn";
+    pub const SWITCH_USB_JSON: &str = "switch_usb_json";
+    pub const SWITCH_USB_JSON_BY_SN: &str = "switch_usb_json_by_sn";
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 #[derive(serde::Serialize, serde::Deserialize)]
 struct RpcResponse {
     ok: bool,
@@ -87,6 +101,7 @@ impl SidecarProcess {
 
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 fn sidecar_slot() -> &'static Mutex<Option<SidecarProcess>> {
+    // Keep one sidecar process per app process to avoid repeated spawn overhead.
     static SLOT: OnceLock<Mutex<Option<SidecarProcess>>> = OnceLock::new();
     SLOT.get_or_init(|| Mutex::new(None))
 }
@@ -98,7 +113,7 @@ pub fn call(op: &str, args: serde_json::Value) -> Result<serde_json::Value, Stri
         args,
     };
 
-    // Retry once by respawning if the sidecar died/crashed.
+    // Retry once after a respawn if the child exits mid-request.
     for attempt in 0..2 {
         let mut slot = sidecar_slot()
             .lock()
@@ -150,50 +165,69 @@ fn respond<W: Write>(writer: &mut W, response: RpcResponse) {
 }
 
 #[cfg(any(target_os = "windows", target_os = "linux"))]
+fn arg_str(args: &serde_json::Value, key: &str) -> Result<String, String> {
+    args[key]
+        .as_str()
+        .map(ToOwned::to_owned)
+        .ok_or_else(|| format!("missing {}", key))
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+fn arg_u64(args: &serde_json::Value, key: &str) -> Result<u64, String> {
+    args[key].as_u64().ok_or_else(|| format!("missing {}", key))
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+fn arg_i32_or(args: &serde_json::Value, key: &str, default: i32) -> i32 {
+    args[key].as_i64().unwrap_or(default as i64) as i32
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+fn arg_u32_or(args: &serde_json::Value, key: &str, default: u32) -> u32 {
+    args[key].as_u64().unwrap_or(default as u64) as u32
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+fn arg_bool_or(args: &serde_json::Value, key: &str, default: bool) -> bool {
+    args[key].as_bool().unwrap_or(default)
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 fn handle_request(req: RpcRequest) -> Result<serde_json::Value, String> {
     match req.op.as_str() {
-        "load" => {
-            let p = req.args["path"]
-                .as_str()
-                .ok_or_else(|| "missing path".to_string())?;
-            crate::jlink_ffi::bridge_load(std::path::Path::new(p))?;
+        op::LOAD => {
+            let p = arg_str(&req.args, "path")?;
+            crate::jlink_ffi::bridge_load(std::path::Path::new(&p))?;
             Ok(serde_json::Value::Bool(true))
         }
-        "is_loaded" => Ok(serde_json::Value::Bool(crate::jlink_ffi::bridge_is_loaded())),
-        "last_error" => Ok(serde_json::Value::String(
+        op::IS_LOADED => Ok(serde_json::Value::Bool(crate::jlink_ffi::bridge_is_loaded())),
+        op::LAST_ERROR => Ok(serde_json::Value::String(
             crate::jlink_ffi::last_native_error(),
         )),
-        "dll_version" => Ok(crate::jlink_ffi::dll_version_string()
+        op::DLL_VERSION => Ok(crate::jlink_ffi::dll_version_string()
             .map(serde_json::Value::String)
             .unwrap_or(serde_json::Value::Null)),
-        "list_probes_json" => Ok(serde_json::Value::String(
+        op::LIST_PROBES_JSON => Ok(serde_json::Value::String(
             crate::jlink_ffi::list_probes_json()?,
         )),
-        "probe_open_details" => {
-            let index = req.args["index"]
-                .as_u64()
-                .ok_or_else(|| "missing index".to_string())? as usize;
+        op::PROBE_OPEN_DETAILS => {
+            let index = arg_u64(&req.args, "index")? as usize;
             let d = crate::jlink_ffi::probe_open_details(index)?;
             Ok(serde_json::json!({
                 "firmware": d.firmware,
                 "usbDriver": d.usb_driver,
             }))
         }
-        "update_firmware_json" => {
-            let index = req.args["index"]
-                .as_u64()
-                .ok_or_else(|| "missing index".to_string())? as usize;
+        op::UPDATE_FIRMWARE_JSON => {
+            let index = arg_u64(&req.args, "index")? as usize;
             Ok(serde_json::Value::String(
                 crate::jlink_ffi::update_firmware_json(index)?,
             ))
         }
-        "update_firmware_json_by_sn" => {
-            let serial_number = req.args["serialNumber"]
-                .as_u64()
-                .ok_or_else(|| "missing serialNumber".to_string())?
-                as u32;
-            let retries = req.args["retries"].as_i64().unwrap_or(0) as i32;
-            let retry_delay_ms = req.args["retryDelayMs"].as_u64().unwrap_or(0) as u32;
+        op::UPDATE_FIRMWARE_JSON_BY_SN => {
+            let serial_number = arg_u64(&req.args, "serialNumber")? as u32;
+            let retries = arg_i32_or(&req.args, "retries", 0);
+            let retry_delay_ms = arg_u32_or(&req.args, "retryDelayMs", 0);
             Ok(serde_json::Value::String(
                 crate::jlink_ffi::update_firmware_json_by_sn(
                     serial_number,
@@ -202,23 +236,18 @@ fn handle_request(req: RpcRequest) -> Result<serde_json::Value, String> {
                 )?,
             ))
         }
-        "switch_usb_json" => {
-            let index = req.args["index"]
-                .as_u64()
-                .ok_or_else(|| "missing index".to_string())? as usize;
-            let winusb = req.args["winusb"].as_bool().unwrap_or(false);
+        op::SWITCH_USB_JSON => {
+            let index = arg_u64(&req.args, "index")? as usize;
+            let winusb = arg_bool_or(&req.args, "winusb", false);
             Ok(serde_json::Value::String(
                 crate::jlink_ffi::switch_usb_json(index, winusb)?,
             ))
         }
-        "switch_usb_json_by_sn" => {
-            let serial_number = req.args["serialNumber"]
-                .as_u64()
-                .ok_or_else(|| "missing serialNumber".to_string())?
-                as u32;
-            let winusb = req.args["winusb"].as_bool().unwrap_or(false);
-            let retries = req.args["retries"].as_i64().unwrap_or(0) as i32;
-            let retry_delay_ms = req.args["retryDelayMs"].as_u64().unwrap_or(0) as u32;
+        op::SWITCH_USB_JSON_BY_SN => {
+            let serial_number = arg_u64(&req.args, "serialNumber")? as u32;
+            let winusb = arg_bool_or(&req.args, "winusb", false);
+            let retries = arg_i32_or(&req.args, "retries", 0);
+            let retry_delay_ms = arg_u32_or(&req.args, "retryDelayMs", 0);
             Ok(serde_json::Value::String(
                 crate::jlink_ffi::switch_usb_json_by_sn(
                     serial_number,
@@ -250,6 +279,7 @@ pub fn run_stdio_sidecar() -> i32 {
             return 0;
         }
 
+        // The parent sends one JSON request per line.
         let req: RpcRequest = match serde_json::from_str(line.trim_end()) {
             Ok(v) => v,
             Err(e) => {
