@@ -95,19 +95,6 @@ bool file_exists_a(const std::string& path) {
   const DWORD a = GetFileAttributesA(path.c_str());
   return a != INVALID_FILE_ATTRIBUTES && (a & FILE_ATTRIBUTE_DIRECTORY) == 0;
 }
-
-std::string windows_path_for_diagnostics(const std::string& path_utf8) {
-  if (path_utf8.size() >= 8 && path_utf8[0] == '\\' && path_utf8[1] == '\\' && path_utf8[2] == '?' &&
-      path_utf8[3] == '\\' && path_utf8[4] == 'U' && path_utf8[5] == 'N' && path_utf8[6] == 'C' &&
-      path_utf8[7] == '\\') {
-    return std::string("\\\\") + path_utf8.substr(8);
-  }
-  if (path_utf8.size() >= 4 && path_utf8[0] == '\\' && path_utf8[1] == '\\' && path_utf8[2] == '?' &&
-      path_utf8[3] == '\\') {
-    return path_utf8.substr(4);
-  }
-  return path_utf8;
-}
 #endif
 
 } // namespace runtime_dirs

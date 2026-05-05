@@ -78,7 +78,7 @@ jobs:
           path: |
             src-tauri/target/${{ matrix.target }}/release/bundle/nsis/
             src-tauri/target/${{ matrix.target }}/release/bundle/msi/
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 14
 
   build-linux:
@@ -128,7 +128,7 @@ jobs:
           path: |
             src-tauri/target/release/bundle/deb/
             src-tauri/target/release/bundle/appimage/
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 14
 
   # Native i386 userland: GTK/appindicator -dev packages exist (unlike :i386 multiarch on amd64).
@@ -182,7 +182,7 @@ jobs:
           path: |
             src-tauri/target/release/bundle/deb/
             src-tauri/target/release/bundle/appimage/
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 14
 
   release:

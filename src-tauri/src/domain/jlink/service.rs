@@ -13,6 +13,53 @@ use crate::infra::runtime::bundled::JLinkRuntime;
 
 pub struct JLinkService;
 
+fn merge_warning_detail(detail: Option<String>, warning: Option<String>) -> Option<String> {
+    match (detail, warning) {
+        (Some(existing), Some(w)) => Some(format!("{}\n\n{}", existing, w)),
+        (Some(existing), None) => Some(existing),
+        (None, Some(w)) => Some(w),
+        (None, None) => None,
+    }
+}
+
+fn switch_with_best_effort_firmware_update<FU, FS>(
+    target_label: &str,
+    update: FU,
+    switch: FS,
+) -> UsbDriverResult
+where
+    FU: FnOnce() -> FirmwareUpdateResult,
+    FS: FnOnce() -> UsbDriverResult,
+{
+    let mut firmware_warning: Option<String> = None;
+    match update() {
+        FirmwareUpdateResult::Failed { error } => {
+            log::warn!(
+                "[jlink] firmware update failed before USB driver switch ({}); continuing switch: {}",
+                target_label,
+                error
+            );
+            firmware_warning = Some(format!("Firmware update failed before switch: {}", error));
+        }
+        FirmwareUpdateResult::Updated { .. } => {
+            log::info!(
+                "[jlink] Probe {} firmware updated; continuing with USB driver switch",
+                target_label
+            );
+        }
+        FirmwareUpdateResult::Current { .. } => {
+            log::info!(
+                "[jlink] Probe {} firmware already current; continuing with USB driver switch",
+                target_label
+            );
+        }
+    }
+
+    let mut result = switch();
+    result.detail = merge_warning_detail(result.detail.take(), firmware_warning);
+    result
+}
+
 impl JLinkService {
     /// Support / diagnostics snapshot for `get_jlink_diagnostics` (and tooling).
     fn diagnostics_json(runtime: Option<&JLinkRuntime>) -> serde_json::Value {
@@ -137,36 +184,12 @@ impl JLinkService {
     ) -> AppResult<UsbDriverResult> {
         log::debug!("[jlink] switch_usb_driver: probe[{}] mode={:?}", probe_index, mode);
         Self::ensure_bridge_loaded()?;
-
-        match update_firmware_via_bridge(probe_index) {
-            FirmwareUpdateResult::Failed { error } => {
-                log::warn!(
-                    "[jlink] firmware update failed before USB driver switch (probe[{}]): {}",
-                    probe_index,
-                    error
-                );
-                return Ok(UsbDriverResult {
-                    success: false,
-                    error: Some(format!("Firmware update failed: {}", error)),
-                    detail: None,
-                    reboot_not_supported: false,
-                });
-            }
-            FirmwareUpdateResult::Updated { .. } => {
-                log::info!(
-                    "[jlink] Probe[{}] firmware updated; continuing with USB driver switch",
-                    probe_index
-                );
-            }
-            FirmwareUpdateResult::Current { .. } => {
-                log::info!(
-                    "[jlink] Probe[{}] firmware already current; continuing with USB driver switch",
-                    probe_index
-                );
-            }
-        }
-
-        Ok(switch_usb_via_bridge(probe_index, mode))
+        let label = format!("probe[{}]", probe_index);
+        Ok(switch_with_best_effort_firmware_update(
+            &label,
+            || update_firmware_via_bridge(probe_index),
+            || switch_usb_via_bridge(probe_index, mode),
+        ))
     }
 
 }
@@ -192,36 +215,12 @@ impl JLinkService {
         // Retry list resolution for a short time.
         let retries = 20;
         let retry_delay_ms = 250;
-
-        match update_firmware_via_bridge_by_sn(sn_u32, retries, retry_delay_ms) {
-            FirmwareUpdateResult::Failed { error } => {
-                log::warn!(
-                    "[jlink] firmware update failed before USB driver switch (sn={}): {}",
-                    serial_number,
-                    error
-                );
-                return Ok(UsbDriverResult {
-                    success: false,
-                    error: Some(format!("Firmware update failed: {}", error)),
-                    detail: None,
-                    reboot_not_supported: false,
-                });
-            }
-            FirmwareUpdateResult::Updated { .. } => {
-                log::info!(
-                    "[jlink] Probe firmware updated (sn={}); continuing with USB driver switch",
-                    serial_number
-                );
-            }
-            FirmwareUpdateResult::Current { .. } => {
-                log::info!(
-                    "[jlink] Probe firmware already current (sn={}); continuing with USB driver switch",
-                    serial_number
-                );
-            }
-        }
-
-        Ok(switch_usb_via_bridge_by_sn(sn_u32, mode, retries, retry_delay_ms))
+        let label = format!("sn={}", serial_number);
+        Ok(switch_with_best_effort_firmware_update(
+            &label,
+            || update_firmware_via_bridge_by_sn(sn_u32, retries, retry_delay_ms),
+            || switch_usb_via_bridge_by_sn(sn_u32, mode, retries, retry_delay_ms),
+        ))
     }
 }
 
@@ -593,7 +592,7 @@ fn parse_switch_usb_response(probe_index: usize, raw: &str) -> UsbDriverResult {
         if let Some(reboot_log) = v["rebootLog"].as_str() {
             if !reboot_log.trim().is_empty() {
                 log::debug!(
-                    "[jlink][bridge] switch ScheduleReboot/reboot exec output:\n{}",
+                    "[jlink][bridge] switch reboot exec output (legacy `reboot` command):\n{}",
                     reboot_log
                 );
             }
@@ -619,6 +618,7 @@ mod tests {
     use super::{
         parse_discovery_firmware_string, parse_firmware_update_response,
         parse_switch_usb_response, JLinkService,
+        switch_with_best_effort_firmware_update,
     };
     use crate::domain::jlink::types::FirmwareUpdateResult;
 
@@ -758,23 +758,6 @@ mod tests {
     }
 
     #[test]
-    fn switch_usb_response_success_accepts_schedule_reboot_log() {
-        let raw = r#"{
-            "success": true,
-            "error": "",
-            "detail": "",
-            "rebootAttempted": true,
-            "rebootNotSupported": false,
-            "rebootCommand": "ScheduleReboot",
-            "rebootLog": "Reboot scheduled successfully.\n",
-            "sleepMs": 100
-        }"#;
-        let r = parse_switch_usb_response(0, raw);
-        assert!(r.success);
-        assert!(!r.reboot_not_supported);
-    }
-
-    #[test]
     fn switch_usb_response_failure_preserves_detail_and_flags() {
         let raw = r#"{
             "success": false,
@@ -794,6 +777,33 @@ mod tests {
         let r = parse_switch_usb_response(0, "not json");
         assert!(!r.success);
         assert!(r.error.is_some());
+    }
+
+    #[test]
+    fn switch_flow_continues_when_firmware_update_fails() {
+        let mut switch_called = false;
+        let result = switch_with_best_effort_firmware_update(
+            "probe[0]",
+            || FirmwareUpdateResult::Failed {
+                error: "OpenEx timeout".to_string(),
+            },
+            || {
+                switch_called = true;
+                crate::domain::jlink::types::UsbDriverResult {
+                    success: true,
+                    error: None,
+                    detail: Some("switch path executed".to_string()),
+                    reboot_not_supported: false,
+                }
+            },
+        );
+
+        assert!(switch_called);
+        assert!(result.success);
+        assert!(result.detail.is_some());
+        let detail = result.detail.unwrap_or_default();
+        assert!(detail.contains("switch path executed"));
+        assert!(detail.contains("Firmware update failed before switch: OpenEx timeout"));
     }
 }
 

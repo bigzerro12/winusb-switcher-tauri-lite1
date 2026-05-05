@@ -58,3 +58,32 @@ jobs:
         run: cargo test --no-fail-fast
       - name: Cargo build (release)
         run: cargo build --release
+
+  tauri-package-smoke:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux dependencies (Tauri/WebKitGTK)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: yarn
+          cache-dependency-path: yarn.lock
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+      - name: Build frontend
+        run: yarn build
+      - name: Build Tauri package (Linux deb smoke)
+        run: yarn tauri:build -- --config src-tauri/tauri.conf.ci-prefrontend.json --bundles deb

@@ -5,7 +5,7 @@
   "license": "MIT",
   "author": {
     "name": "J-Link WinUSB Switcher",
-    "email": "probe-configurator@example.com"
+    "email": "maintainers@winusb-switcher.invalid"
   },
   "scripts": {
     "dev": "vite",
@@ -21,7 +21,6 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0",
-    "@tauri-apps/plugin-shell": "^2.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "zustand": "^5.0.3"

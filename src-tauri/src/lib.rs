@@ -23,19 +23,32 @@ pub fn run() {
         ));
     }
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .manage(AppState::new())
-        .plugin(log_builder.build())
-        .plugin(tauri_plugin_shell::init())
-        .invoke_handler(tauri::generate_handler![
+        .plugin(log_builder.build());
+
+    #[cfg(debug_assertions)]
+    let builder = builder.invoke_handler(tauri::generate_handler![
+        commands::prepare_bundled_jlink,
+        commands::detect_and_scan,
+        commands::scan_probes,
+        commands::jlink_exec_command,
+        commands::switch_usb_driver,
+        commands::get_arch_info,
+        commands::get_jlink_diagnostics,
+    ]);
+
+    #[cfg(not(debug_assertions))]
+    let builder = builder.invoke_handler(tauri::generate_handler![
             commands::prepare_bundled_jlink,
             commands::detect_and_scan,
             commands::scan_probes,
-            commands::jlink_exec_command,
             commands::switch_usb_driver,
             commands::get_arch_info,
             commands::get_jlink_diagnostics,
-        ])
+        ]);
+
+    builder
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

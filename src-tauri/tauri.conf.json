@@ -41,10 +41,5 @@
       "resources/segger-99-jlink.rules",
       "resources/jlink-runtime-bundled/**/*"
     ]
-  },
-  "plugins": {
-    "shell": {
-      "open": true
-    }
   }
 }

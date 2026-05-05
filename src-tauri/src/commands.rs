@@ -33,7 +33,17 @@ pub async fn prepare_bundled_jlink(
     #[cfg(target_os = "windows")]
     {
         log::info!("[cmd] prepare_bundled_jlink (Windows)");
-        let override_path = std::env::var(WINUSB_JLINK_DLL_OVERRIDE_ENV).ok();
+        let override_path = if cfg!(debug_assertions) {
+            std::env::var(WINUSB_JLINK_DLL_OVERRIDE_ENV).ok()
+        } else {
+            if std::env::var(WINUSB_JLINK_DLL_OVERRIDE_ENV).is_ok() {
+                log::warn!(
+                    "[cmd] {} is ignored in release builds",
+                    WINUSB_JLINK_DLL_OVERRIDE_ENV
+                );
+            }
+            None
+        };
 
         let blocking = tokio::task::spawn_blocking(move || {
             let override_dll = override_path.as_deref().map(std::path::PathBuf::from);
@@ -54,9 +64,12 @@ pub async fn prepare_bundled_jlink(
         };
 
         log::info!(
-            "[cmd] prepare_bundled_jlink ok: lib={} version={:?}",
-            runtime.native_lib_path.display(),
+            "[cmd] prepare_bundled_jlink ok (Windows): version={:?}",
             runtime.version
+        );
+        log::debug!(
+            "[cmd] prepare_bundled_jlink runtime library: {}",
+            runtime.native_lib_path.display()
         );
         state.set_runtime(runtime.clone());
         Ok(runtime.native_lib_path.to_string_lossy().into_owned())
@@ -84,9 +97,12 @@ pub async fn prepare_bundled_jlink(
             };
 
             log::info!(
-                "[cmd] prepare_bundled_jlink ok: lib={} version={:?}",
-                runtime.native_lib_path.display(),
+                "[cmd] prepare_bundled_jlink ok (Linux): version={:?}",
                 runtime.version
+            );
+            log::debug!(
+                "[cmd] prepare_bundled_jlink runtime library: {}",
+                runtime.native_lib_path.display()
             );
             state.set_runtime(runtime.clone());
             Ok(runtime.native_lib_path.to_string_lossy().into_owned())
@@ -179,6 +195,11 @@ pub async fn jlink_exec_command(
     exec_cmd: String,
     state: State<'_, AppState>,
 ) -> Result<String, AppError> {
+    if !cfg!(debug_assertions) {
+        return Err(AppError::Runtime(
+            "jlink_exec_command is disabled in release builds".to_string(),
+        ));
+    }
     let _rt = state.get_runtime();
     // We rely on "bridge loaded" invariant established by prepare_bundled_jlink.
     let out = tokio::task::spawn_blocking(move || -> AppResult<String> {
