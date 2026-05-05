@@ -142,17 +142,19 @@ pub fn prepare(app: &AppHandle) -> AppResult<JLinkRuntime> {
 }
 
 #[cfg(target_os = "linux")]
+pub fn ensure_linux_udev_rules_on_startup(app: &AppHandle) -> AppResult<()> {
+    ensure_linux_udev_rules(app)
+}
+
+#[cfg(target_os = "linux")]
 fn ensure_linux_udev_rules(app: &AppHandle) -> AppResult<()> {
     use std::fs;
     use std::io::Write;
     use std::os::unix::fs::PermissionsExt;
     use std::process::Command;
-    use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     const RULES_DST: &str = "/etc/udev/rules.d/99-jlink.rules";
     const RULES_BUNDLED: &str = "resources/segger-99-jlink.rules";
-    const ATTEMPT_MARKER_NAME: &str = "udev-99-jlink-install-attempt.txt";
-    const ATTEMPT_COOLDOWN: Duration = Duration::from_secs(24 * 60 * 60);
 
     let res_dir = app
         .path()
@@ -160,46 +162,26 @@ fn ensure_linux_udev_rules(app: &AppHandle) -> AppResult<()> {
         .map_err(|e| AppError::Internal(format!("resource_dir: {}", e)))?;
     let bundled_rules = res_dir.join(RULES_BUNDLED);
     if !bundled_rules.is_file() {
-        log::warn!(
-            "[bootstrap] udev rules missing: {} (not bundled at {})",
-            RULES_DST,
+        return Err(AppError::Runtime(format!(
+            "Bundled udev rules file is missing: {}",
             bundled_rules.display()
-        );
-        return Ok(());
+        )));
     }
     let bytes = fs::read(&bundled_rules)?;
 
-    // Best-effort: only prompt when rules are missing or stale.
+    // If the system already has the expected rules, startup should continue without prompting.
     if let Ok(existing) = fs::read(RULES_DST) {
         if existing == bytes {
+            log::debug!(
+                "[bootstrap] udev rules already installed and up-to-date ({})",
+                RULES_DST
+            );
             return Ok(());
         }
         log::info!(
             "[bootstrap] existing udev rules differ from bundled copy; attempting update ({})",
-            RULES_DST
+            RULES_DST,
         );
-    }
-
-    // If the user declined the privilege prompt (or pkexec was unavailable), don't reprompt on every launch.
-    // We'll try again after a short cooldown, and of course we stop prompting entirely once rules match.
-    let attempt_marker_path = app
-        .path()
-        .app_local_data_dir()
-        .map(|p| p.join(ATTEMPT_MARKER_NAME))
-        .ok();
-    if let Some(marker) = attempt_marker_path.as_ref() {
-        if let Ok(meta) = fs::metadata(marker) {
-            if let Ok(modified) = meta.modified() {
-                if let Ok(age) = SystemTime::now().duration_since(modified) {
-                    if age < ATTEMPT_COOLDOWN {
-                        log::info!(
-                            "[bootstrap] udev rules not installed yet; skipping pkexec retry (cooldown active)"
-                        );
-                        return Ok(());
-                    }
-                }
-            }
-        }
     }
 
     // Use securely created temp files so local users cannot race path creation in /tmp.
@@ -275,41 +257,18 @@ udevadm trigger
     match status {
         Ok(s) if s.success() => {
             log::info!("[bootstrap] pkexec installed udev rules to {}", RULES_DST);
-            if let Some(marker) = attempt_marker_path.as_ref() {
-                let _ = fs::remove_file(marker);
-            }
         }
         Ok(s) => {
-            log::warn!(
-                "[bootstrap] pkexec did not install udev rules (exit {:?}). USB access may fail until rules are installed.",
+            return Err(AppError::Runtime(format!(
+                "J-Link udev setup was not completed (pkexec exit code: {:?})",
                 s.code()
-            );
-            if let Some(marker) = attempt_marker_path.as_ref() {
-                if let Some(parent) = marker.parent() {
-                    let _ = fs::create_dir_all(parent);
-                }
-                let now = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .map(|d| d.as_secs())
-                    .unwrap_or(0);
-                let _ = fs::write(marker, format!("ts={}\n", now));
-            }
+            )));
         }
         Err(e) => {
-            log::warn!(
-                "[bootstrap] pkexec unavailable/failed: {}. USB access may fail until rules are installed.",
+            return Err(AppError::Runtime(format!(
+                "Failed to run pkexec for J-Link udev setup: {}",
                 e
-            );
-            if let Some(marker) = attempt_marker_path.as_ref() {
-                if let Some(parent) = marker.parent() {
-                    let _ = fs::create_dir_all(parent);
-                }
-                let now = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .map(|d| d.as_secs())
-                    .unwrap_or(0);
-                let _ = fs::write(marker, format!("ts={}\n", now));
-            }
+            )));
         }
     }
     Ok(())

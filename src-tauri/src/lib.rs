@@ -27,7 +27,20 @@ pub fn run() {
 
     let builder = tauri::Builder::default()
         .manage(AppState::new())
-        .plugin(log_builder.build());
+        .plugin(log_builder.build())
+        .setup(|_app| {
+            #[cfg(target_os = "linux")]
+            {
+                let app_handle = _app.handle().clone();
+                if let Err(e) =
+                    crate::infra::runtime::bundled::ensure_linux_udev_rules_on_startup(&app_handle)
+                {
+                    log::error!("[bootstrap] Linux udev setup failed at startup: {}", e);
+                    return Err(Box::<dyn std::error::Error>::from(e));
+                }
+            }
+            Ok(())
+        });
 
     let builder = builder.invoke_handler(tauri::generate_handler![
         commands::prepare_bundled_jlink,
