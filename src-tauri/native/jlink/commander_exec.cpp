@@ -414,7 +414,7 @@ void _WaitForPostRebootReconnect(
     const RebootResult& r
 ) {
   if (r.command.empty() || r.not_supported) return;
-  _ExecSleep(500);
+  _ExecSleep(1000);
   std::string tmp_err;
   if (_ConnectToJLink(a, index, list, tmp_err)) {
     _DisconnectFromJLink(a);
