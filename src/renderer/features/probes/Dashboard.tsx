@@ -39,7 +39,8 @@ export default function Dashboard() {
         <header className="app-header">
           <h1>J-Link WinUSB Switcher</h1>
           <p className="app-description">
-            A lightweight utility to manage and switch USB drivers of connected J-Link probes to WinUSB.
+            A Renesas R365 helper tool that simplifies switching SEGGER J-Link probes to WinUSB mode,
+            improving WebIDE compatibility and debugging usability.
           </p>
         </header>
 

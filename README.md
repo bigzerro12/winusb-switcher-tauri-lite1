@@ -1,6 +1,6 @@
 # J-Link WinUSB Switcher
 
-J-Link WinUSB Switcher is a desktop utility for embedded and manufacturing teams that need consistent control of SEGGER J-Link USB driver mode. It detects connected probes, reports runtime status, and switches probe USB mode between WinUSB and SEGGER behavior where probe firmware supports it.
+A Renesas R365 helper tool that simplifies switching SEGGER J-Link probes to WinUSB mode, improving WebIDE compatibility and debugging usability.
 
 The app ships with a bundled SEGGER runtime and firmware assets. It does not include an in-app SEGGER downloader or updater.
 

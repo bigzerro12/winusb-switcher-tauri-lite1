@@ -1,7 +1,7 @@
 {
   "name": "jlink-winusb-switcher-lite",
   "version": "1.0.0",
-  "description": "J-Link WinUSB Switcher — lightweight utility to switch J-Link probes to WinUSB",
+  "description": "A Renesas R365 helper tool that simplifies switching SEGGER J-Link probes to WinUSB mode, improving WebIDE compatibility and debugging usability.",
   "license": "MIT",
   "author": {
     "name": "J-Link WinUSB Switcher",
