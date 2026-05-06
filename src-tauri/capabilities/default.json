@@ -3,6 +3,9 @@
   "description": "Default permissions for J-Link WinUSB Switcher",
   "windows": ["main"],
   "permissions": [
-    "core:default"
+    "core:default",
+    "core:window:allow-outer-size",
+    "core:window:allow-scale-factor",
+    "core:window:allow-set-size"
   ]
 }

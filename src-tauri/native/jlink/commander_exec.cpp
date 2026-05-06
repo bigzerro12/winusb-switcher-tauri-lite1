@@ -414,15 +414,10 @@ void _WaitForPostRebootReconnect(
     const RebootResult& r
 ) {
   if (r.command.empty() || r.not_supported) return;
-  const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(5000);
   _ExecSleep(500);
-  while (std::chrono::steady_clock::now() < deadline) {
-    std::string tmp_err;
-    if (_ConnectToJLink(a, index, list, tmp_err)) {
-      _DisconnectFromJLink(a);
-      break;
-    }
-    _ExecSleep(50);
+  std::string tmp_err;
+  if (_ConnectToJLink(a, index, list, tmp_err)) {
+    _DisconnectFromJLink(a);
   }
 }
 
