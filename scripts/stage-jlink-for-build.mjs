@@ -3,7 +3,7 @@
  * Copies only the J-Link zip that matches the current Tauri build target into
  * src-tauri/resources/jlink/<os>/<arch>/ so installers do not bundle every OS.
  *
- * Canonical payloads (tracked in Git LFS) live under src-tauri/jlink-bundles/.
+ * Canonical payloads live under src-tauri/jlink-bundles/.
  * The staged tree under src-tauri/resources/jlink/ is gitignored.
  */
 import fs from "fs";
