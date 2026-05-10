@@ -13,6 +13,7 @@
     "withGlobalTauri": false,
     "windows": [
       {
+        "create": false,
         "title": "J-Link WinUSB Switcher",
         "width": 780,
         "height": 580,
@@ -27,8 +28,8 @@
     }
   },
   "bundle": {
-    "active": true,
-    "targets": ["nsis", "msi", "deb", "appimage"],
+    "active": false,
+    "targets": [],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

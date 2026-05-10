@@ -9,7 +9,7 @@ A Renesas R365 helper tool that simplifies switching SEGGER J-Link probes to Win
 - **Primary function**: detect connected J-Link probes and switch USB driver mode.
 - **Architecture**: React renderer + Rust/Tauri backend + native C++ bridge in a sidecar process.
 - **Bundled runtime model**: source runtime tree (`jlink-runtime`) + target-filtered bundled tree (`jlink-runtime-bundled`).
-- **Supported packaging targets**: Windows (`.exe`, `.msi`) and Linux (`.deb`, `.AppImage`).
+- **Supported release format**: platform-specific ZIP packages containing runnable app payloads.
 
 ---
 
@@ -118,7 +118,8 @@ Common scripts:
 | Item | Description |
 | --- | --- |
 | `WINUSB_JLINK_DLL_OVERRIDE` (Windows) | Debug-only override in development. Ignored for release behavior. |
-| Logging | Backend uses `log` + `tauri-plugin-log`. Debug builds also mirror logs to WebView target. |
+| Logging | Backend uses `log` + `tauri-plugin-log`; user logs are append-only across sessions. |
+| Log/cache location | Logs and cache for `com.winusbswitcher.lite` are stored in the installation directory (not `%AppData%`). |
 | CSP | Production policy is in `src-tauri/tauri.conf.json`; dev overrides are merged via `src-tauri/tauri.conf.dev.json`. |
 | Diagnostics API | `get_jlink_diagnostics` returns runtime pathing, bridge state, and version details. |
 

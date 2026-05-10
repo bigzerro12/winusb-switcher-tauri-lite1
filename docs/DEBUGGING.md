@@ -89,6 +89,11 @@ Minimum evidence bundle when triaging:
 3. Sidecar Process/Native Bridge logs
 4. Platform diagnostics (`get_jlink_diagnostics`) output
 
+Log and cache location policy:
+
+- Expected log and cache root is inside the installation directory.
+- `AppData`-based paths are out of policy for this application specification.
+
 Triaging rule:
 
 - Find the **first failing boundary** (startup -> Runtime Preparation -> Sidecar Process -> Native Bridge call), not just the final UI message.
@@ -109,6 +114,7 @@ Checks:
 - Runtime staging output exists in `resources/jlink-runtime-bundled/**/*`
 - Target-matching library exists (`JLink_x64.dll` / `JLinkARM.dll` / `libjlinkarm.so`)
 - `prepare_bundled_jlink` and Sidecar Process load logs indicate successful load path
+- Install-root log file is writable and receives appended entries across restarts
 
 ### B. Linux permission denied
 

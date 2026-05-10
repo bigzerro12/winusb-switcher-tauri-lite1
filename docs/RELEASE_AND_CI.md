@@ -14,6 +14,7 @@ In scope:
 - Tag-triggered release flow and expected assets.
 - Maintainer actions before and after tag publication.
 - Runtime Preparation artifact correctness in packaged outputs.
+- ZIP-distribution policy for release artifacts.
 
 Out of scope:
 
@@ -74,8 +75,8 @@ Any gate failure blocks release readiness.
 
 ### Expected release assets
 
-- Windows installers (`.exe`, `.msi`)
-- Linux installers (`.deb`, `.AppImage`)
+- Windows ZIP package(s) containing runnable application payload
+- Linux ZIP package(s) containing runnable application payload
 - Checksum artifacts (`SHA256SUMS*.txt`)
 
 ---
@@ -85,7 +86,8 @@ Any gate failure blocks release readiness.
 - Any failed quality gate blocks release and must be resolved before tagging.
 - Missing or partial assets require rerun/rebuild before publication is considered complete.
 - Checksum mismatch or missing checksum files invalidates release readiness.
-- Missing Runtime Preparation payloads in installers invalidates release readiness.
+- Missing Runtime Preparation payloads in release ZIP packages invalidates release readiness.
+- Publishing installer-only artifacts without ZIP packages is out of spec.
 
 ---
 

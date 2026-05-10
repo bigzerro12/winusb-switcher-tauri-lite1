@@ -12,6 +12,7 @@ In scope:
 
 - Linux and Windows runtime/driver constraints.
 - Build/runtime prerequisites that affect startup, scan, and WinUSB Switch Flow behavior.
+- Runtime data placement policy for logs and cache.
 - Explicit non-support position for macOS in this repository.
 
 Out of scope:
@@ -47,7 +48,7 @@ Operational behavior:
 
 Maintenance implications:
 
-- Any change to rule content or installer path must be validated on supported distros.
+- Any change to rule content or installation path must be validated on supported distros.
 - USB re-enumeration tests should include unplug/replug after rule updates.
 
 ### Runtime Preparation and loading
@@ -58,6 +59,7 @@ Maintenance implications:
 ### Build prerequisites
 
 - Linux CI/build needs GTK/WebKitGTK/libsoup development packages in place.
+- Install-root write access is required for append-only logs and local cache.
 
 ---
 
@@ -73,6 +75,13 @@ Maintenance implications:
 - x64 uses `JLink_x64.dll`.
 - x86 uses `JLinkARM.dll`.
 - Runtime location must match Runtime Preparation output for the selected target.
+- Install-root write access is required for append-only logs and local cache.
+
+### Runtime data placement policy
+
+- Application logs must be append-only across runs.
+- Log files and cache for `com.winusbswitcher.lite` must remain inside the installation directory.
+- User-profile storage (for example `%AppData%`) is intentionally avoided to reduce machine footprint.
 
 ---
 
@@ -86,6 +95,7 @@ Maintenance implications:
 
 - Missing Linux udev setup in strict mode blocks continuation by design.
 - Missing Runtime Preparation libraries (`.so`/`.dll`) must fail early with explicit diagnostics.
+- If install-root write permissions are unavailable, startup/runtime operations that require logging or cache must fail with explicit guidance.
 - Unsupported platforms should fail with clear, non-ambiguous messaging.
 
 ---

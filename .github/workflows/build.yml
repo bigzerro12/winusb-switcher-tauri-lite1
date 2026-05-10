@@ -68,16 +68,25 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Build & package (Windows ${{ matrix.target }})
+      - name: Build (Windows ${{ matrix.target }})
         run: yarn tauri:build -- --target ${{ matrix.target }}
+
+      - name: Package portable .zip
+        run: yarn package:portable -- --target ${{ matrix.target }}
+
+      - name: SHA256 checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd release-zips && sha256sum ./*.zip) | tee "SHA256SUMS-windows-${{ matrix.target }}.txt"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: bundle-windows-${{ matrix.target }}
+          name: portable-windows-${{ matrix.target }}
           path: |
-            src-tauri/target/${{ matrix.target }}/release/bundle/nsis/
-            src-tauri/target/${{ matrix.target }}/release/bundle/msi/
+            release-zips/*.zip
+            SHA256SUMS-windows-${{ matrix.target }}.txt
           if-no-files-found: error
           retention-days: 14
 
@@ -95,7 +104,8 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev \
             patchelf \
-            libssl-dev
+            libssl-dev \
+            zip
 
       - uses: actions/setup-node@v4
         with:
@@ -118,16 +128,25 @@ jobs:
           name: linux-frontend-dist
           path: out/renderer
 
-      - name: Build & package (Linux x86_64)
-        run: yarn tauri:build -- --config src-tauri/tauri.conf.ci-prefrontend.json --bundles deb,appimage
+      - name: Build (Linux x86_64)
+        run: yarn tauri:build -- --config src-tauri/tauri.conf.ci-prefrontend.json
+
+      - name: Package portable .zip
+        run: yarn package:portable
+
+      - name: SHA256 checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd release-zips && sha256sum ./*.zip) | tee SHA256SUMS-linux-x86_64-unknown-linux-gnu.txt
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: bundle-linux-x86_64-unknown-linux-gnu
+          name: portable-linux-x86_64-unknown-linux-gnu
           path: |
-            src-tauri/target/release/bundle/deb/
-            src-tauri/target/release/bundle/appimage/
+            release-zips/*.zip
+            SHA256SUMS-linux-x86_64-unknown-linux-gnu.txt
           if-no-files-found: error
           retention-days: 14
 
@@ -171,19 +190,31 @@ jobs:
         if: steps.tauri-cli-bin.outputs.cache-hit != 'true'
         run: cargo install tauri-cli --locked --version 2.10.1
 
-      - name: Build & package (Linux i686)
+      - name: Build (Linux i686)
         run: |
           cd src-tauri
-          cargo tauri build --locked --config tauri.conf.ci-prefrontend.json --bundles deb
+          cargo tauri build --locked --config tauri.conf.ci-prefrontend.json
         env:
           PATH: /root/.cargo/bin:/usr/local/bin:/usr/bin:/bin
+
+      - name: Package portable .zip
+        run: node scripts/package-portable.mjs --target i686-unknown-linux-gnu
+        env:
+          PATH: /root/.cargo/bin:/usr/local/bin:/usr/bin:/bin
+
+      - name: SHA256 checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd release-zips && sha256sum ./*.zip) | tee SHA256SUMS-linux-i686-unknown-linux-gnu.txt
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: bundle-linux-i686-unknown-linux-gnu
+          name: portable-linux-i686-unknown-linux-gnu
           path: |
-            src-tauri/target/release/bundle/deb/
+            release-zips/*.zip
+            SHA256SUMS-linux-i686-unknown-linux-gnu.txt
           if-no-files-found: error
           retention-days: 14
 
@@ -196,17 +227,18 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Download all bundle artifacts
+      - name: Download all portable artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: bundle-*
+          pattern: portable-*
           merge-multiple: true
 
       - name: Generate release checksums
         run: |
+          set -euo pipefail
           shopt -s globstar nullglob
           : > SHA256SUMS.txt
-          for f in **/*.msi **/*.exe **/*.AppImage **/*.deb; do
+          for f in **/*.zip; do
             sha256sum "$f" >> SHA256SUMS.txt
           done
           test -s SHA256SUMS.txt
@@ -219,10 +251,7 @@ jobs:
           draft: false
           generate_release_notes: true
           files: |
-            **/*.msi
-            **/*.exe
-            **/*.AppImage
-            **/*.deb
+            **/*.zip
             SHA256SUMS.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

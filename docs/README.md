@@ -31,4 +31,5 @@ Use this page as the entry point for design, behavior, and operations documentat
 - **Sidecar Process**: the `--jlink-sidecar` process hosting bridge-side execution.
 - **Native Bridge**: the C++ integration layer under `src-tauri/native/jlink/*`.
 - **WinUSB Switch Flow**: the end-to-end USB mode switch operation initiated from `switch_usb_driver`.
+- **Install-Root Data Policy**: logs/cache for `com.winusbswitcher.lite` remain in the installation directory and are not written to `AppData`.
 

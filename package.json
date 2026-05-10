@@ -19,6 +19,7 @@
     "tauri": "tauri",
     "tauri:dev": "node scripts/tauri-dev.mjs",
     "tauri:build": "tauri build",
+    "package:portable": "node scripts/package-portable.mjs",
     "preview": "vite preview",
     "push:testing": "bash scripts/push-testing-remote.sh"
   },
