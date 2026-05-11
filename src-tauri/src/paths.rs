@@ -1,4 +1,4 @@
-//! Install-relative paths for logs and WebView data (avoid `%LOCALAPPDATA%` / XDG footprint).
+//! Writable runtime paths for logs, lock files, and WebView data.
 
 use std::path::{Path, PathBuf};
 
@@ -11,12 +11,40 @@ fn exe_dir() -> Option<PathBuf> {
         .and_then(|p| p.parent().map(Path::to_path_buf))
 }
 
-/// The app keeps its writable data beside the installed executable.
+#[cfg(target_os = "linux")]
+fn env_path(var: &str) -> Option<PathBuf> {
+    std::env::var_os(var).map(PathBuf::from)
+}
+
+#[cfg(target_os = "linux")]
+fn xdg_data_root() -> PathBuf {
+    env_path("XDG_DATA_HOME").unwrap_or_else(|| {
+        env_path("HOME")
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join(".local")
+            .join("share")
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn xdg_cache_root() -> PathBuf {
+    env_path("XDG_CACHE_HOME").unwrap_or_else(|| {
+        env_path("HOME")
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join(".cache")
+    })
+}
+
+/// Windows keeps writable data beside the installed executable.
 pub fn install_root() -> PathBuf {
     exe_dir().unwrap_or_else(|| PathBuf::from("."))
 }
 
 pub fn app_data_dir() -> PathBuf {
+    #[cfg(target_os = "linux")]
+    {
+        return xdg_data_root().join(APP_DIR_NAME);
+    }
     install_root().join(APP_DIR_NAME)
 }
 
@@ -25,6 +53,10 @@ pub fn log_dir() -> PathBuf {
 }
 
 pub fn webview_data_dir() -> PathBuf {
+    #[cfg(target_os = "linux")]
+    {
+        return xdg_cache_root().join(APP_DIR_NAME).join("webview");
+    }
     app_data_dir().join("webview")
 }
 

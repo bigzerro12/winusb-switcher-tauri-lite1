@@ -94,7 +94,8 @@ sequenceDiagram
 ### Design notes
 
 - Runtime initialization opens a single append-only user log file and writes explicit session start/end markers.
-- App runtime data for `com.winusbswitcher.lite` (logs/cache) is stored under the installation directory, not under user profile locations such as `AppData`.
+- Windows stores `com.winusbswitcher.lite` logs/cache beside the executable.
+- Linux stores logs under `$XDG_DATA_HOME/com.winusbswitcher.lite/logs/` (fallback `~/.local/share/...`) and WebView cache under `$XDG_CACHE_HOME/com.winusbswitcher.lite/webview/` (fallback `~/.cache/...`).
 
 ---
 

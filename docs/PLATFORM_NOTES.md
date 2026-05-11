@@ -58,7 +58,10 @@ Maintenance implications:
 ### Build prerequisites
 
 - Linux CI/build needs GTK/WebKitGTK/libsoup development packages in place.
-- Install-root write access is required for append-only logs, the single-instance lock file, and local WebView cache.
+- Runtime data paths:
+  - logs: `$XDG_DATA_HOME/com.winusbswitcher.lite/logs/` (fallback `~/.local/share/com.winusbswitcher.lite/logs/`)
+  - WebView cache: `$XDG_CACHE_HOME/com.winusbswitcher.lite/webview/` (fallback `~/.cache/com.winusbswitcher.lite/webview/`)
+  - single-instance lock: `$XDG_DATA_HOME/com.winusbswitcher.lite/single-instance.lock` (fallback `~/.local/share/com.winusbswitcher.lite/single-instance.lock`)
 
 ---
 
@@ -74,7 +77,10 @@ Maintenance implications:
 - x64 uses `JLink_x64.dll`.
 - x86 uses `JLinkARM.dll`.
 - Runtime location must match Runtime Preparation output for the selected target.
-- Install-root write access is required for append-only logs, the single-instance lock file, and local WebView cache.
+- Runtime data paths:
+  - logs: `<exe-dir>/com.winusbswitcher.lite/logs/app.log`
+  - WebView cache: `<exe-dir>/com.winusbswitcher.lite/webview/`
+  - single-instance lock: `<exe-dir>/com.winusbswitcher.lite/single-instance.lock`
 
 ---
 
