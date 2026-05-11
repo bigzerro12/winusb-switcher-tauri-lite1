@@ -1,10 +1,13 @@
 //! Writable runtime paths for logs, lock files, and WebView data.
 
-use std::path::{Path, PathBuf};
+#[cfg(not(target_os = "linux"))]
+use std::path::Path;
+use std::path::PathBuf;
 
 /// Matches `identifier` in `tauri.conf.json`.
 pub const APP_DIR_NAME: &str = "com.winusbswitcher.lite";
 
+#[cfg(not(target_os = "linux"))]
 fn exe_dir() -> Option<PathBuf> {
     std::env::current_exe()
         .ok()
@@ -27,6 +30,7 @@ fn xdg_data_root() -> PathBuf {
 }
 
 /// Windows keeps writable data beside the installed executable.
+#[cfg(not(target_os = "linux"))]
 pub fn install_root() -> PathBuf {
     exe_dir().unwrap_or_else(|| PathBuf::from("."))
 }
