@@ -34,9 +34,12 @@ pub fn install_root() -> PathBuf {
 pub fn app_data_dir() -> PathBuf {
     #[cfg(target_os = "linux")]
     {
-        return xdg_data_root().join(APP_DIR_NAME);
+        xdg_data_root().join(APP_DIR_NAME)
     }
-    install_root().join(APP_DIR_NAME)
+    #[cfg(not(target_os = "linux"))]
+    {
+        install_root().join(APP_DIR_NAME)
+    }
 }
 
 pub fn log_dir() -> PathBuf {
@@ -44,10 +47,6 @@ pub fn log_dir() -> PathBuf {
 }
 
 pub fn webview_data_dir() -> PathBuf {
-    #[cfg(target_os = "linux")]
-    {
-        return app_data_dir().join("webview");
-    }
     app_data_dir().join("webview")
 }
 
