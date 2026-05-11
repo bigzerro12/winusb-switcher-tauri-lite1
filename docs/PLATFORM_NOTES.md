@@ -60,7 +60,7 @@ Maintenance implications:
 - Linux CI/build needs GTK/WebKitGTK/libsoup development packages in place.
 - Runtime data paths:
   - logs: `$XDG_DATA_HOME/com.winusbswitcher.lite/logs/` (fallback `~/.local/share/com.winusbswitcher.lite/logs/`)
-  - WebView data/cache: `$XDG_DATA_HOME/com.winusbswitcher.lite/logs/` (fallback `~/.local/share/com.winusbswitcher.lite/logs/`)
+  - WebView data/cache: `$XDG_DATA_HOME/com.winusbswitcher.lite/webview/` (fallback `~/.local/share/com.winusbswitcher.lite/webview/`)
   - single-instance lock: `$XDG_DATA_HOME/com.winusbswitcher.lite/single-instance.lock` (fallback `~/.local/share/com.winusbswitcher.lite/single-instance.lock`)
 
 ---

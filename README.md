@@ -119,7 +119,7 @@ Common scripts:
 | --- | --- |
 | `WINUSB_JLINK_DLL_OVERRIDE` (Windows) | Debug-only override in development. Ignored for release behavior. |
 | Logging | Backend uses `log` + `tauri-plugin-log`; `app.log` is append-only across runs and records explicit session start/end markers. Debug builds also mirror logs to WebView target. |
-| Log/cache location | Windows: `<exe-dir>/com.winusbswitcher.lite/logs/app.log` and `<exe-dir>/com.winusbswitcher.lite/webview/`. Linux: `app.log` and WebView data both use `$XDG_DATA_HOME/com.winusbswitcher.lite/logs/` (fallback `~/.local/share/com.winusbswitcher.lite/logs/`). |
+| Log/cache location | Windows: `<exe-dir>/com.winusbswitcher.lite/logs/app.log` and `<exe-dir>/com.winusbswitcher.lite/webview/`. Linux: `$XDG_DATA_HOME/com.winusbswitcher.lite/logs/app.log` and `$XDG_DATA_HOME/com.winusbswitcher.lite/webview/` (fallback `~/.local/share/com.winusbswitcher.lite/...`). |
 | CSP | Production policy is in `src-tauri/tauri.conf.json`; dev overrides are merged via `src-tauri/tauri.conf.dev.json`. |
 | Diagnostics API | `get_jlink_diagnostics` returns runtime pathing, bridge state, and version details. |
 
