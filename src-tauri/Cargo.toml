@@ -23,6 +23,11 @@ log = "0.4"
 ctrlc = "3"
 thiserror = "1"
 tempfile = "3"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+fs2 = "0.4"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_UI_WindowsAndMessaging"] }
  
 
 

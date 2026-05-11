@@ -56,3 +56,12 @@ pub fn ensure_app_dirs() -> std::io::Result<()> {
     std::fs::create_dir_all(webview_data_dir())?;
     Ok(())
 }
+
+/// Local timestamp for per-session log file names (one file per run).
+pub fn session_timestamp_stem() -> String {
+    chrono::Local::now().format("%Y-%m-%d_%H-%M-%S").to_string()
+}
+
+pub fn instance_lock_path() -> PathBuf {
+    app_data_dir().join("single-instance.lock")
+}

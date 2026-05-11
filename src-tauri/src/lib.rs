@@ -10,13 +10,34 @@ mod jlink_ffi;
 mod logging;
 mod paths;
 mod platform;
+mod single_instance;
 mod state;
 
 use state::AppState;
+use std::sync::OnceLock;
 use tauri::webview::WebviewWindowBuilder;
+
+static SESSION_LOG_STEM: OnceLock<String> = OnceLock::new();
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    paths::ensure_app_dirs().unwrap_or_else(|e| {
+        eprintln!("create app dirs: {e}");
+        std::process::exit(1);
+    });
+
+    let lock_path = paths::instance_lock_path();
+    let instance_lock = match single_instance::acquire_lock_file(&lock_path) {
+        Ok(f) => f,
+        Err(()) => {
+            single_instance::notify_duplicate_instance();
+            std::process::exit(1);
+        }
+    };
+
+    let session_stem = format!("session-{}", paths::session_timestamp_stem());
+    SESSION_LOG_STEM.set(session_stem.clone()).ok();
+
     let log_dir = paths::log_dir();
     let mut log_builder = tauri_plugin_log::Builder::new()
         .level(log::LevelFilter::Info)
@@ -28,7 +49,7 @@ pub fn run() {
         .target(tauri_plugin_log::Target::new(
             tauri_plugin_log::TargetKind::Folder {
                 path: log_dir,
-                file_name: Some("app".into()),
+                file_name: Some(session_stem),
             },
         ));
     #[cfg(debug_assertions)]
@@ -39,9 +60,21 @@ pub fn run() {
     }
 
     let builder = tauri::Builder::default()
-        .manage(AppState::new())
+        .manage(AppState::new(instance_lock))
         .plugin(log_builder.build())
         .setup(|app| {
+            let start_ts =
+                chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+            let stem = SESSION_LOG_STEM
+                .get()
+                .map(String::as_str)
+                .unwrap_or("unknown");
+            log::info!(
+                "[session] started at {} | log file stem: {}",
+                start_ts,
+                stem
+            );
+
             #[cfg(target_os = "linux")]
             {
                 let app_handle = app.handle().clone();
@@ -52,9 +85,6 @@ pub fn run() {
                     return Err(Box::<dyn std::error::Error>::from(e));
                 }
             }
-
-            paths::ensure_app_dirs()
-                .map_err(|e| Box::<dyn std::error::Error>::from(format!("create app dirs: {e}")))?;
 
             let window_conf = app
                 .config()
@@ -81,9 +111,20 @@ pub fn run() {
         commands::get_jlink_diagnostics,
     ]);
 
-    builder
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+    let context = tauri::generate_context!();
+    let app = builder
+        .build(context)
+        .expect("error while building tauri application");
+    app.run(|_handle, event| {
+        if let tauri::RunEvent::Exit = event {
+            let end_ts = chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+            let stem = SESSION_LOG_STEM
+                .get()
+                .map(String::as_str)
+                .unwrap_or("unknown");
+            log::info!("[session] ended at {} | log file stem: {}", end_ts, stem);
+        }
+    });
 }
 
 pub fn run_jlink_sidecar() -> i32 {
