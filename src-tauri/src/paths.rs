@@ -55,7 +55,7 @@ pub fn log_dir() -> PathBuf {
 pub fn webview_data_dir() -> PathBuf {
     #[cfg(target_os = "linux")]
     {
-        return xdg_cache_root().join(APP_DIR_NAME).join("webview");
+        return log_dir();
     }
     app_data_dir().join("webview")
 }

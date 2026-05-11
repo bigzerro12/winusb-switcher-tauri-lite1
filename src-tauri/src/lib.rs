@@ -16,6 +16,15 @@ mod state;
 use state::AppState;
 use tauri::webview::WebviewWindowBuilder;
 
+fn log_session_end(reason: Option<&str>) {
+    let end_ts = chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    if let Some(reason) = reason {
+        log::info!("[session] ended at {end_ts} ({reason})");
+    } else {
+        log::info!("[session] ended at {end_ts}");
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     paths::ensure_app_dirs().unwrap_or_else(|e| {
@@ -68,6 +77,7 @@ pub fn run() {
                     crate::infra::runtime::bundled::ensure_linux_udev_rules_on_startup(&app_handle)
                 {
                     log::error!("[bootstrap] Linux udev setup failed at startup: {}", e);
+                    log_session_end(Some(&format!("startup failed: {e}")));
                     return Err(Box::<dyn std::error::Error>::from(e));
                 }
             }
@@ -103,8 +113,7 @@ pub fn run() {
 
     app.run(|_handle, event| {
         if let tauri::RunEvent::Exit = event {
-            let end_ts = chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-            log::info!("[session] ended at {end_ts}");
+            log_session_end(None);
         }
     });
 }

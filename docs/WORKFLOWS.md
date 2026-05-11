@@ -95,7 +95,7 @@ sequenceDiagram
 
 - Runtime initialization opens a single append-only user log file and writes explicit session start/end markers.
 - Windows stores `com.winusbswitcher.lite` logs/cache beside the executable.
-- Linux stores logs under `$XDG_DATA_HOME/com.winusbswitcher.lite/logs/` (fallback `~/.local/share/...`) and WebView cache under `$XDG_CACHE_HOME/com.winusbswitcher.lite/webview/` (fallback `~/.cache/...`).
+- Linux stores both logs and WebView data under `$XDG_DATA_HOME/com.winusbswitcher.lite/logs/` (fallback `~/.local/share/...`).
 
 ---
 
