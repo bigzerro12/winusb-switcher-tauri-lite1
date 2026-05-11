@@ -14,10 +14,7 @@ mod single_instance;
 mod state;
 
 use state::AppState;
-use std::sync::OnceLock;
 use tauri::webview::WebviewWindowBuilder;
-
-static SESSION_LOG_STEM: OnceLock<String> = OnceLock::new();
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -35,9 +32,6 @@ pub fn run() {
         }
     };
 
-    let session_stem = format!("session-{}", paths::session_timestamp_stem());
-    SESSION_LOG_STEM.set(session_stem.clone()).ok();
-
     let log_dir = paths::log_dir();
     let mut log_builder = tauri_plugin_log::Builder::new()
         .level(log::LevelFilter::Info)
@@ -49,7 +43,7 @@ pub fn run() {
         .target(tauri_plugin_log::Target::new(
             tauri_plugin_log::TargetKind::Folder {
                 path: log_dir,
-                file_name: Some(session_stem),
+                file_name: Some("app".into()),
             },
         ));
     #[cfg(debug_assertions)]
@@ -63,18 +57,6 @@ pub fn run() {
         .manage(AppState::new(instance_lock))
         .plugin(log_builder.build())
         .setup(|app| {
-            let start_ts =
-                chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-            let stem = SESSION_LOG_STEM
-                .get()
-                .map(String::as_str)
-                .unwrap_or("unknown");
-            log::info!(
-                "[session] started at {} | log file stem: {}",
-                start_ts,
-                stem
-            );
-
             #[cfg(target_os = "linux")]
             {
                 let app_handle = app.handle().clone();
@@ -111,20 +93,9 @@ pub fn run() {
         commands::get_jlink_diagnostics,
     ]);
 
-    let context = tauri::generate_context!();
-    let app = builder
-        .build(context)
-        .expect("error while building tauri application");
-    app.run(|_handle, event| {
-        if let tauri::RunEvent::Exit = event {
-            let end_ts = chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-            let stem = SESSION_LOG_STEM
-                .get()
-                .map(String::as_str)
-                .unwrap_or("unknown");
-            log::info!("[session] ended at {} | log file stem: {}", end_ts, stem);
-        }
-    });
+    builder
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
 }
 
 pub fn run_jlink_sidecar() -> i32 {

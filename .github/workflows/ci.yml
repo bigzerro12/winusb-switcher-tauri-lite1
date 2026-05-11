@@ -80,8 +80,7 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev \
             patchelf \
-            libssl-dev \
-            zip
+            libssl-dev
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -92,12 +91,10 @@ jobs:
         run: yarn install --frozen-lockfile
       - name: Build frontend
         run: yarn build
-      - name: Build Tauri (Linux, portable)
+      - name: Build Tauri package (Linux deb smoke)
         env:
           TAURI_ENV_TARGET_TRIPLE: x86_64-unknown-linux-gnu
-        run: yarn tauri:build -- --config src-tauri/tauri.conf.ci-prefrontend.json
-      - name: Package portable .zip (smoke)
-        run: yarn package:portable
+        run: yarn tauri:build -- --config src-tauri/tauri.conf.ci-prefrontend.json --bundles deb
 
   tauri-package-smoke-windows:
     runs-on: windows-latest
@@ -118,9 +115,7 @@ jobs:
         run: yarn install --frozen-lockfile
       - name: Build frontend
         run: yarn build
-      - name: Build Tauri (Windows x64, portable)
+      - name: Build Tauri package (Windows x64 smoke)
         env:
           TAURI_ENV_TARGET_TRIPLE: x86_64-pc-windows-msvc
         run: yarn tauri:build -- --target x86_64-pc-windows-msvc
-      - name: Package portable .zip (smoke)
-        run: yarn package:portable -- --target x86_64-pc-windows-msvc

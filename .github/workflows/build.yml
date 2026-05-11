@@ -6,6 +6,14 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      build_linux_i686:
+        description: "Build Linux i686 artifacts (requires self-hosted runner)"
+        required: false
+        default: "false"
+        type: choice
+        options: ["false", "true"]
 
 permissions:
   contents: read
@@ -60,27 +68,18 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Build (Windows ${{ matrix.target }})
+      - name: Build & package (Windows ${{ matrix.target }})
         env:
           TAURI_ENV_TARGET_TRIPLE: ${{ matrix.target }}
         run: yarn tauri:build -- --target ${{ matrix.target }}
 
-      - name: Package portable .zip
-        run: yarn package:portable -- --target ${{ matrix.target }}
-
-      - name: SHA256 checksums
-        shell: bash
-        run: |
-          set -euo pipefail
-          (cd release-zips && sha256sum ./*.zip) | tee "SHA256SUMS-windows-${{ matrix.target }}.txt"
-
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: portable-windows-${{ matrix.target }}
+          name: bundle-windows-${{ matrix.target }}
           path: |
-            release-zips/*.zip
-            SHA256SUMS-windows-${{ matrix.target }}.txt
+            src-tauri/target/${{ matrix.target }}/release/bundle/nsis/
+            src-tauri/target/${{ matrix.target }}/release/bundle/msi/
           if-no-files-found: error
           retention-days: 14
 
@@ -98,8 +97,7 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev \
             patchelf \
-            libssl-dev \
-            zip
+            libssl-dev
 
       - uses: actions/setup-node@v4
         with:
@@ -122,27 +120,75 @@ jobs:
           name: linux-frontend-dist
           path: out/renderer
 
-      - name: Build (Linux x86_64)
+      - name: Build & package (Linux x86_64)
         env:
           TAURI_ENV_TARGET_TRIPLE: x86_64-unknown-linux-gnu
-        run: yarn tauri:build -- --config src-tauri/tauri.conf.ci-prefrontend.json
-
-      - name: Package portable .zip
-        run: yarn package:portable
-
-      - name: SHA256 checksums
-        shell: bash
-        run: |
-          set -euo pipefail
-          (cd release-zips && sha256sum ./*.zip) | tee SHA256SUMS-linux-x86_64-unknown-linux-gnu.txt
+        run: yarn tauri:build -- --config src-tauri/tauri.conf.ci-prefrontend.json --bundles deb,appimage
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: portable-linux-x86_64-unknown-linux-gnu
+          name: bundle-linux-x86_64-unknown-linux-gnu
           path: |
-            release-zips/*.zip
-            SHA256SUMS-linux-x86_64-unknown-linux-gnu.txt
+            src-tauri/target/release/bundle/deb/
+            src-tauri/target/release/bundle/appimage/
+          if-no-files-found: error
+          retention-days: 14
+
+  # Native i386 userland: GTK/appindicator -dev packages exist (unlike :i386 multiarch on amd64).
+  # Node 20 has no linux-x86 build → reuse frontend artifact; Node 16 linux-x86 runs staging.mjs only.
+  build-linux-i686:
+    needs: linux-frontend-dist
+    # GitHub-hosted runners can't run JavaScript actions inside a 32-bit container because the runner's
+    # Node binary is 64-bit (actions like checkout fail with /__e/node20/bin/node not found).
+    # Run this job only on a self-hosted i686-capable runner when explicitly requested.
+    if: github.event_name == 'workflow_dispatch' && inputs.build_linux_i686 == 'true'
+    runs-on: [self-hosted, linux, i686]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch prebuilt frontend
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-frontend-dist
+          path: out/renderer
+
+      - name: Install Node 16 (linux-x86) for J-Link staging script
+        run: |
+          NODE_FILE=node-v16.20.2-linux-x86.tar.xz
+          curl -fsSL "https://nodejs.org/dist/v16.20.2/${NODE_FILE}" -o /tmp/node.tar.xz
+          curl -fsSL "https://nodejs.org/dist/v16.20.2/SHASUMS256.txt" -o /tmp/SHASUMS256.txt
+          grep " ${NODE_FILE}$" /tmp/SHASUMS256.txt | sed "s| ${NODE_FILE}$| /tmp/node.tar.xz|" | sha256sum -c -
+          tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1
+          node -v
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo-tauri binary
+        uses: actions/cache@v4
+        id: tauri-cli-bin
+        with:
+          path: /root/.cargo/bin/cargo-tauri
+          key: tauri-cli-i686-2.10.1-v2
+
+      - name: Cargo install tauri-cli
+        if: steps.tauri-cli-bin.outputs.cache-hit != 'true'
+        run: cargo install tauri-cli --locked --version 2.10.1
+
+      - name: Build & package (Linux i686)
+        run: |
+          cd src-tauri
+          cargo tauri build --locked --config tauri.conf.ci-prefrontend.json --bundles deb
+        env:
+          TAURI_ENV_TARGET_TRIPLE: i686-unknown-linux-gnu
+          PATH: /root/.cargo/bin:/usr/local/bin:/usr/bin:/bin
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-linux-i686-unknown-linux-gnu
+          path: |
+            src-tauri/target/release/bundle/deb/
           if-no-files-found: error
           retention-days: 14
 
@@ -155,18 +201,17 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Download all portable artifacts
+      - name: Download all bundle artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: portable-*
+          pattern: bundle-*
           merge-multiple: true
 
       - name: Generate release checksums
         run: |
-          set -euo pipefail
           shopt -s globstar nullglob
           : > SHA256SUMS.txt
-          for f in **/*.zip; do
+          for f in **/*.msi **/*.exe **/*.AppImage **/*.deb; do
             sha256sum "$f" >> SHA256SUMS.txt
           done
           test -s SHA256SUMS.txt
@@ -179,7 +224,10 @@ jobs:
           draft: false
           generate_release_notes: true
           files: |
-            **/*.zip
+            **/*.msi
+            **/*.exe
+            **/*.AppImage
+            **/*.deb
             SHA256SUMS.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -13,30 +13,9 @@ fn exe_dir() -> Option<PathBuf> {
 
 /// Directory the user considers the “install root” (folder that should contain `com.winusbswitcher.lite/`).
 ///
-/// Windows: directory containing the `.exe`.
-/// Linux portable zip layout: `<root>/bin/<binary>` with resources under `<root>/lib/<cargo_pkg_name>/resources`.
-/// Linux/macOS dev (`target/.../release/`): directory containing the binary.
+/// Currently the parent directory of the main executable (installer layout and local `cargo` output).
 pub fn install_root() -> PathBuf {
-    let Some(exe_dir) = exe_dir() else {
-        return PathBuf::from(".");
-    };
-
-    #[cfg(target_os = "linux")]
-    {
-        if exe_dir.file_name().and_then(|n| n.to_str()) == Some("bin") {
-            if let Some(root) = exe_dir.parent() {
-                let lib_res = root
-                    .join("lib")
-                    .join(env!("CARGO_PKG_NAME"))
-                    .join("resources");
-                if lib_res.is_dir() {
-                    return root.to_path_buf();
-                }
-            }
-        }
-    }
-
-    exe_dir
+    exe_dir().unwrap_or_else(|| PathBuf::from("."))
 }
 
 pub fn app_data_dir() -> PathBuf {
@@ -55,11 +34,6 @@ pub fn ensure_app_dirs() -> std::io::Result<()> {
     std::fs::create_dir_all(log_dir())?;
     std::fs::create_dir_all(webview_data_dir())?;
     Ok(())
-}
-
-/// Local timestamp for per-session log file names (one file per run).
-pub fn session_timestamp_stem() -> String {
-    chrono::Local::now().format("%Y-%m-%d_%H-%M-%S").to_string()
 }
 
 pub fn instance_lock_path() -> PathBuf {

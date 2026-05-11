@@ -95,7 +95,7 @@ Rationale:
 There are two runtime trees by design:
 
 - `src-tauri/resources/jlink-runtime/` (full source runtime set)
-- `src-tauri/resources/jlink-runtime-bundled/` (target-filtered payload included in release ZIP packages)
+- `src-tauri/resources/jlink-runtime-bundled/` (target-filtered payload included in installer/bundle packages)
 
 ```mermaid
 sequenceDiagram

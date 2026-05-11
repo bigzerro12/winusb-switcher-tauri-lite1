@@ -9,7 +9,7 @@ A Renesas R365 helper tool that simplifies switching SEGGER J-Link probes to Win
 - **Primary function**: detect connected J-Link probes and switch USB driver mode.
 - **Architecture**: React renderer + Rust/Tauri backend + native C++ bridge in a sidecar process.
 - **Bundled runtime model**: source runtime tree (`jlink-runtime`) + target-filtered bundled tree (`jlink-runtime-bundled`).
-- **Supported release format**: platform-specific ZIP packages containing runnable app payloads.
+- **Supported release format**: Tauri installers and bundles — Windows NSIS + MSI, Linux `.deb` + AppImage.
 
 ---
 
@@ -130,7 +130,7 @@ Common scripts:
 | Workflow | Purpose |
 | --- | --- |
 | `.github/workflows/ci.yml` | Frontend lint/build/tests, Rust fmt/clippy/test/build checks |
-| `.github/workflows/build.yml` | Tagged release artifacts for Windows and Linux, plus `SHA256SUMS.txt` |
+| `.github/workflows/build.yml` | Tag-triggered release: Windows NSIS/MSI + Linux deb/AppImage and `SHA256SUMS.txt` |
 
 Release process (maintainers):
 
