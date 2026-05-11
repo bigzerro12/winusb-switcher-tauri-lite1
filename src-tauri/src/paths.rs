@@ -11,9 +11,7 @@ fn exe_dir() -> Option<PathBuf> {
         .and_then(|p| p.parent().map(Path::to_path_buf))
 }
 
-/// Directory the user considers the “install root” (folder that should contain `com.winusbswitcher.lite/`).
-///
-/// Currently the parent directory of the main executable (installer layout and local `cargo` output).
+/// The app keeps its writable data beside the installed executable.
 pub fn install_root() -> PathBuf {
     exe_dir().unwrap_or_else(|| PathBuf::from("."))
 }

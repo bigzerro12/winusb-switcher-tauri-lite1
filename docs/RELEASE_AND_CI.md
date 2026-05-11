@@ -14,7 +14,6 @@ In scope:
 - Tag-triggered release flow and expected assets.
 - Maintainer actions before and after tag publication.
 - Runtime Preparation artifact correctness in packaged outputs.
-- Installer-based distribution policy for release artifacts (Windows NSIS/MSI, Linux deb/AppImage).
 
 Out of scope:
 
@@ -75,9 +74,9 @@ Any gate failure blocks release readiness.
 
 ### Expected release assets
 
-- Windows: NSIS installer (`.exe`) and MSI where produced by the bundle step
-- Linux x86_64: `.deb` and AppImage (`.AppImage`) where produced
-- Checksum artifacts (`SHA256SUMS.txt` aggregating the above)
+- Windows installers (`.exe`, `.msi`)
+- Linux installers (`.deb`, `.AppImage`)
+- Checksum artifacts (`SHA256SUMS*.txt`)
 
 ---
 
@@ -86,7 +85,7 @@ Any gate failure blocks release readiness.
 - Any failed quality gate blocks release and must be resolved before tagging.
 - Missing or partial assets require rerun/rebuild before publication is considered complete.
 - Checksum mismatch or missing checksum files invalidates release readiness.
-- Missing Runtime Preparation payloads in shipped installers invalidates release readiness.
+- Missing Runtime Preparation payloads in installers invalidates release readiness.
 
 ---
 

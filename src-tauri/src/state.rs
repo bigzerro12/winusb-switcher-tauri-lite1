@@ -11,7 +11,7 @@ const POISONED_BOOTSTRAP_MUTEX: &str =
 
 /// Application state: the prepared SEGGER runtime (bridge-loaded) and related metadata.
 pub struct AppState {
-    /// Held for process lifetime so the OS releases the lock when we exit (even on crash).
+    /// Held for the process lifetime so the OS releases the lock when the app exits.
     _instance_lock: std::fs::File,
     runtime: Mutex<Option<ActiveRuntime>>,
     firmware_bootstrap_done: Mutex<bool>,

@@ -9,7 +9,7 @@ A Renesas R365 helper tool that simplifies switching SEGGER J-Link probes to Win
 - **Primary function**: detect connected J-Link probes and switch USB driver mode.
 - **Architecture**: React renderer + Rust/Tauri backend + native C++ bridge in a sidecar process.
 - **Bundled runtime model**: source runtime tree (`jlink-runtime`) + target-filtered bundled tree (`jlink-runtime-bundled`).
-- **Supported release format**: Tauri installers and bundles — Windows NSIS + MSI, Linux `.deb` + AppImage.
+- **Supported packaging targets**: Windows (`.exe`, `.msi`) and Linux (`.deb`, `.AppImage`).
 
 ---
 
@@ -118,8 +118,8 @@ Common scripts:
 | Item | Description |
 | --- | --- |
 | `WINUSB_JLINK_DLL_OVERRIDE` (Windows) | Debug-only override in development. Ignored for release behavior. |
-| Logging | Backend uses `log` + `tauri-plugin-log`; user logs are append-only across sessions. |
-| Log/cache location | Logs and cache for `com.winusbswitcher.lite` are stored in the installation directory (not `%AppData%`). |
+| Logging | Backend uses `log` + `tauri-plugin-log`; `app.log` is append-only across runs and records explicit session start/end markers. Debug builds also mirror logs to WebView target. |
+| Log/cache location | Logs and WebView cache for `com.winusbswitcher.lite` are stored under the install directory, not user profile locations such as `%AppData%`. |
 | CSP | Production policy is in `src-tauri/tauri.conf.json`; dev overrides are merged via `src-tauri/tauri.conf.dev.json`. |
 | Diagnostics API | `get_jlink_diagnostics` returns runtime pathing, bridge state, and version details. |
 
@@ -130,7 +130,7 @@ Common scripts:
 | Workflow | Purpose |
 | --- | --- |
 | `.github/workflows/ci.yml` | Frontend lint/build/tests, Rust fmt/clippy/test/build checks |
-| `.github/workflows/build.yml` | Tag-triggered release: Windows NSIS/MSI + Linux deb/AppImage and `SHA256SUMS.txt` |
+| `.github/workflows/build.yml` | Tagged release artifacts for Windows and Linux, plus `SHA256SUMS.txt` |
 
 Release process (maintainers):
 

@@ -89,11 +89,12 @@ sequenceDiagram
 
 - Runtime Preparation failure -> startup blocked with actionable error.
 - Linux rules refusal/failure -> app exits by policy (strict environment).
+- If another app instance is already running, startup is blocked and the user is notified.
 
 ### Design notes
 
-- Runtime initialization opens the user log file in append mode so entries persist across app sessions.
-- App runtime data for `com.winusbswitcher.lite` (logs/cache) must be stored under the installation directory, not under user profile locations such as `AppData`.
+- Runtime initialization opens a single append-only user log file and writes explicit session start/end markers.
+- App runtime data for `com.winusbswitcher.lite` (logs/cache) is stored under the installation directory, not under user profile locations such as `AppData`.
 
 ---
 

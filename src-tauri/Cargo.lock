@@ -1745,6 +1745,7 @@ name = "jlink-winusb-switcher-lite"
 version = "1.0.0"
 dependencies = [
  "cc",
+ "chrono",
  "ctrlc",
  "fs2",
  "log",

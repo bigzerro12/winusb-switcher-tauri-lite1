@@ -5,15 +5,15 @@ use std::fs::OpenOptions;
 use std::path::Path;
 
 pub fn acquire_lock_file(lock_path: &Path) -> Result<std::fs::File, ()> {
-    let f = OpenOptions::new()
+    let file = OpenOptions::new()
         .read(true)
         .write(true)
         .create(true)
         .truncate(false)
         .open(lock_path)
         .map_err(|_| ())?;
-    f.try_lock_exclusive().map_err(|_| ())?;
-    Ok(f)
+    file.try_lock_exclusive().map_err(|_| ())?;
+    Ok(file)
 }
 
 pub fn notify_duplicate_instance() {

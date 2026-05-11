@@ -25,7 +25,7 @@ pub fn run() {
 
     let lock_path = paths::instance_lock_path();
     let instance_lock = match single_instance::acquire_lock_file(&lock_path) {
-        Ok(f) => f,
+        Ok(file) => file,
         Err(()) => {
             single_instance::notify_duplicate_instance();
             std::process::exit(1);
@@ -57,6 +57,10 @@ pub fn run() {
         .manage(AppState::new(instance_lock))
         .plugin(log_builder.build())
         .setup(|app| {
+            let start_ts =
+                chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+            log::info!("[session] started at {start_ts}");
+
             #[cfg(target_os = "linux")]
             {
                 let app_handle = app.handle().clone();
@@ -93,9 +97,16 @@ pub fn run() {
         commands::get_jlink_diagnostics,
     ]);
 
-    builder
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+    let app = builder
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    app.run(|_handle, event| {
+        if let tauri::RunEvent::Exit = event {
+            let end_ts = chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+            log::info!("[session] ended at {end_ts}");
+        }
+    });
 }
 
 pub fn run_jlink_sidecar() -> i32 {

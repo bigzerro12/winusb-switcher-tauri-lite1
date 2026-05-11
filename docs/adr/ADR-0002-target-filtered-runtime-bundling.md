@@ -5,7 +5,7 @@
 
 ## Context
 
-The repository must support multiple OS/architecture runtime payloads, but shipping every architecture’s binaries inside each installer or bundle would bloat artifacts and confuse runtime selection.
+The repository must support multiple OS/architecture runtime payloads, but shipping all payloads in each installer increases artifact size and distribution complexity.
 
 ## Decision
 
@@ -19,7 +19,7 @@ Populate the bundled tree during build using `stage-jlink-runtime-for-bundle.mjs
 ## Consequences
 
 - Positive:
-  - smaller release artifacts per target
+  - smaller release artifacts
   - deterministic target-specific packaging
 - Trade-offs:
   - build-time staging step must always run correctly
